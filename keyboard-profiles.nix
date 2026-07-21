@@ -1,0 +1,30 @@
+[
+  { id = "us"; rules = "evdev"; model = "pc105"; layout = "us"; variant = ""; options = ""; }
+  { id = "us-intl"; rules = "evdev"; model = "pc105"; layout = "us"; variant = "intl"; options = ""; }
+  { id = "gb"; rules = "evdev"; model = "pc105"; layout = "gb"; variant = ""; options = ""; }
+  { id = "de"; rules = "evdev"; model = "pc105"; layout = "de"; variant = ""; options = ""; }
+  { id = "fr"; rules = "evdev"; model = "pc105"; layout = "fr"; variant = ""; options = ""; }
+  { id = "es"; rules = "evdev"; model = "pc105"; layout = "es"; variant = ""; options = ""; }
+  { id = "latam"; rules = "evdev"; model = "pc105"; layout = "latam"; variant = ""; options = ""; }
+  { id = "it"; rules = "evdev"; model = "pc105"; layout = "it"; variant = ""; options = ""; }
+  { id = "pt"; rules = "evdev"; model = "pc105"; layout = "pt"; variant = ""; options = ""; }
+  { id = "br"; rules = "evdev"; model = "pc105"; layout = "br"; variant = ""; options = ""; }
+  { id = "pl"; rules = "evdev"; model = "pc105"; layout = "pl"; variant = ""; options = ""; }
+  { id = "cz"; rules = "evdev"; model = "pc105"; layout = "cz"; variant = ""; options = ""; }
+  { id = "tr"; rules = "evdev"; model = "pc105"; layout = "tr"; variant = ""; options = ""; }
+  { id = "se"; rules = "evdev"; model = "pc105"; layout = "se"; variant = ""; options = ""; }
+  { id = "ru"; rules = "evdev"; model = "pc105"; layout = "ru"; variant = ""; options = ""; }
+  { id = "ua"; rules = "evdev"; model = "pc105"; layout = "ua"; variant = ""; options = ""; }
+  { id = "gr"; rules = "evdev"; model = "pc105"; layout = "gr"; variant = ""; options = ""; }
+  { id = "il"; rules = "evdev"; model = "pc105"; layout = "il"; variant = ""; options = ""; }
+  { id = "ara"; rules = "evdev"; model = "pc105"; layout = "ara"; variant = ""; options = ""; }
+  { id = "vn"; rules = "evdev"; model = "pc105"; layout = "vn"; variant = ""; options = ""; }
+  { id = "be"; rules = "evdev"; model = "pc105"; layout = "be"; variant = ""; options = ""; }
+  { id = "ch"; rules = "evdev"; model = "pc105"; layout = "ch"; variant = ""; options = ""; }
+  { id = "nl"; rules = "evdev"; model = "pc105"; layout = "nl"; variant = ""; options = ""; }
+  { id = "dk"; rules = "evdev"; model = "pc105"; layout = "dk"; variant = ""; options = ""; }
+  { id = "no"; rules = "evdev"; model = "pc105"; layout = "no"; variant = ""; options = ""; }
+  { id = "fi"; rules = "evdev"; model = "pc105"; layout = "fi"; variant = ""; options = ""; }
+  { id = "rs"; rules = "evdev"; model = "pc105"; layout = "rs"; variant = ""; options = ""; }
+  { id = "rs-latin"; rules = "evdev"; model = "pc105"; layout = "rs"; variant = "latin"; options = ""; }
+]
