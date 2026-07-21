@@ -150,7 +150,10 @@ static.runCommand "xvfb-static-glx-alpha-${releaseVersion}" {
   extract_license ${targetLLVM.src} llvm/tools/polly/LICENSE.TXT $L/llvm-polly.LICENSE
   extract_license ${targetLLVM.src} llvm/tools/polly/lib/External/isl/LICENSE $L/llvm-polly-isl.LICENSE
   extract_license ${targetLLVM.src} llvm/tools/polly/lib/External/isl/imath/LICENSE $L/llvm-polly-isl-imath.LICENSE
-  extract_license ${static.libdrm.src} COPYING $L/libdrm.COPYING
+  # libdrm 2.4.133's release archive has no standalone COPYING file. Its
+  # primary public header carries the complete MIT notice; retain that exact
+  # pinned source file rather than sourcing replacement text elsewhere.
+  extract_license ${static.libdrm.src} xf86drm.h $L/libdrm-xf86drm.LICENSE-SOURCE
   extract_license ${static.libxshmfence.src} COPYING $L/libxshmfence.COPYING
   extract_license ${static.libxrandr.src} COPYING $L/libXrandr.COPYING
   extract_license ${static.libxrender.src} COPYING $L/libXrender.COPYING
