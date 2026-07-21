@@ -25,11 +25,12 @@ path and branding scans, and patch/build-file consistency inspection.
 - The two X.Org patches in this repository have previously been used to build
   and boot a static x86_64 Xvfb.
 - This repository has **not yet been built end-to-end from a clean checkout**.
-  Treat the first clean x86_64 build and Alpine smoke test as the immediate
-  pre-publication gate. Do not erase this caveat until you personally run the
-  commands and observe them pass.
-- aarch64 is cross-built from x86_64. Unless newer evidence is recorded here,
-  it has not been executed on real aarch64 hardware.
+  Treat clean native builds and Alpine smoke tests for both architectures as
+  the immediate pre-publication gate. Do not erase this caveat until you
+  personally run the commands and observe them pass.
+- x86_64 and aarch64 are configured as native sibling builds. Unless newer
+  evidence is recorded here, aarch64 has not been executed on real aarch64
+  hardware.
 
 This repository must stay understandable, buildable, testable, and legally
 distributable on its own.
@@ -92,7 +93,7 @@ goal, treat that as a product-design change and compare at least:
 |---|---|
 | `README.md` | Public user-facing overview, installation/build instructions, limitations, and licensing summary. |
 | `AGENTS.md` | Maintainer and agent cold-start guide; operational truth and maintenance invariants. |
-| `flake.nix` | Defines native x86_64 and cross-compiled aarch64 package outputs. |
+| `flake.nix` | Defines symmetric native x86_64 and aarch64 package outputs. |
 | `flake.lock` | Exact nixpkgs revision and content hash. This transitively pins X.Org and linked dependencies. |
 | `package.nix` | Core build: static-libxcvt workaround, embedded keymap, Xvfb override, stripping, license extraction, and manifest generation. |
 | `build.sh` | Docker-only entry point and reproducible archive/checksum assembly. |
@@ -103,7 +104,7 @@ goal, treat that as a product-design change and compare at least:
 | `LICENSE` / `NOTICE` | Apache-2.0 licensing for original project code and patches; not a blanket license for Xvfb. |
 | `SECURITY.md` | Supported-version and private-reporting policy. |
 | `CONTRIBUTING.md` | Public contribution expectations and minimum local gates. |
-| `.github/workflows/ci.yml` | Builds and smoke-tests x86_64 on pushes and pull requests, then uploads an ephemeral CI artifact. |
+| `.github/workflows/ci.yml` | Builds and smoke-tests both architectures on native runners, then uploads ephemeral CI artifacts. |
 | `.github/dependabot.yml` | Monthly GitHub Actions update checks. It does not update Nix inputs. |
 | `out/` | Ignored local build products. Never treat these as source. |
 
@@ -163,8 +164,8 @@ outputs live under `out/<arch>/` and are ignored by Git.
 From a clean checkout:
 
 ```sh
-./build.sh x86_64
-./test/smoke.sh out/x86_64/static-xvfb-linux-x86_64.tar.gz
+./build.sh
+./test/smoke.sh
 ```
 
 Then inspect rather than trusting a green exit status alone:
@@ -309,8 +310,9 @@ uncertain licensing questions rather than silently optimizing notices away.
 
 ## 10. CI and release expectations
 
-Current CI builds and smoke-tests x86_64, then uploads a workflow artifact.
-That artifact is ephemeral and is not a public GitHub Release.
+Current CI builds and smoke-tests x86_64 and aarch64 on matching native
+runners, then uploads workflow artifacts. Those artifacts are ephemeral and
+are not a public GitHub Release.
 
 Before the first public release, add or verify a release workflow with these
 properties:
@@ -335,22 +337,22 @@ real hardware.
 
 In priority order:
 
-1. **Run the first clean x86_64 build.** Fix any build issues, then run
-   `test/smoke.sh` and inspect the archive manually.
+1. **Run the first clean builds.** Fix any build issues, then run
+   `test/smoke.sh` natively on both architectures and inspect both archives
+   manually.
 2. **Validate compliance against the actual closure.** Confirm every linked or
    incorporated component and its required notices.
 3. **Prove reproducibility.** Build twice from clean output directories (and
    ideally on two hosts) and compare archive SHA-256 values. A persistent Nix
    cache is fine; source output state must not leak between attempts.
 4. **Add a real release workflow.** Current CI does not publish releases.
-5. **Build aarch64.** Record whether cross-compilation succeeds.
-6. **Run aarch64.** Prefer real hardware; otherwise label emulation honestly.
-7. **Add explicit negative tests.** Pin the absence of runtime XKB files and
+5. **Verify aarch64.** Record the first successful native build and smoke test.
+6. **Add explicit negative tests.** Pin the absence of runtime XKB files and
    the refusal/failure behavior for unsupported keymap paths.
-8. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
+7. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
    static closure and complement, not replace, license texts.
-9. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
-10. **Choose and document the initial versioning policy.** Semantic Versioning
+8. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
+9. **Choose and document the initial versioning policy.** Semantic Versioning
     is reasonable: artifact-contract changes are major, dependency rebuilds
     with unchanged behavior are patch releases, and compatible additions are
     minor releases.
@@ -448,13 +450,14 @@ cmp build-a/static-xvfb-linux-x86_64.tar.gz \
 A code or dependency change affecting shipped bytes is done only when:
 
 1. the relevant source and patch logic have been reviewed;
-2. the x86_64 artifact builds from the pinned environment;
-3. the actual packaged Xvfb boots in the Alpine smoke test;
+2. both architecture artifacts build from the pinned environment;
+3. each actual packaged Xvfb boots in the Alpine smoke test on its native
+   architecture;
 4. the failure path relevant to the change has been exercised;
 5. static linkage and archive contents are inspected;
 6. manifest and licensing output are complete;
 7. documentation states any behavior or verification-status change;
-8. aarch64 is built when the change can affect it;
+8. both architectures are built when the change can affect shipped bytes;
 9. reproducibility-sensitive inputs remain pinned;
 10. no unsupported claim is made in README or release notes.
 
