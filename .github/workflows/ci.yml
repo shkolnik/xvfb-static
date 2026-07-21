@@ -67,8 +67,14 @@ jobs:
               /src/nix-build-cached.sh nix \
                 --extra-experimental-features "nix-command flakes" build \
                 --impure --file /src/test/glx-render.nix \
-                --out-link /src/result-glx-render-test --print-build-logs
+                --out-link /tmp/result-glx-render-test --print-build-logs
+              test -x /tmp/result-glx-render-test/bin/glx-render-test
+              rm -rf /src/result-glx-render-test
+              mkdir -p /src/result-glx-render-test/bin
+              install -m 0755 /tmp/result-glx-render-test/bin/glx-render-test \
+                /src/result-glx-render-test/bin/glx-render-test
             '
+          test -x result-glx-render-test/bin/glx-render-test
       - if: matrix.variant == 'glx'
         name: Smoke-test GLX alpha archive
         run: ./test/smoke.sh "out/glx-alpha/${{ matrix.arch }}/xvfb-static-glx-alpha-linux-${{ matrix.arch }}.tar.gz"
