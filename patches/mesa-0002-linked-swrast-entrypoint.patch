@@ -1,0 +1,170 @@
+diff --git a/src/gallium/targets/dri/dri_target.c b/src/gallium/targets/dri/dri_target.c
+--- a/src/gallium/targets/dri/dri_target.c
++++ b/src/gallium/targets/dri/dri_target.c
+@@ -1,4 +1,166 @@
+ #include "util/detect_os.h"
+ 
+ #include "target-helpers/drm_helper.h"
+ #include "target-helpers/sw_helper.h"
++
++#include "dri_screen.h"
++#include "dri_util.h"
++
++#if defined(GALLIUM_LLVMPIPE) || defined(GALLIUM_SOFTPIPE)
++
++/*
++ * Mesa 24.2 replaced the legacy X server DRI entrypoint with dril, a stub
++ * that deliberately cannot create indirect contexts.  The maintained
++ * Gallium DRI frontend is still functional, but now uses typed internal
++ * callbacks.  Recreate the layout-compatible loader table here and forward
++ * it to that frontend.
++ */
++
++#define LINKED_DRI_CORE "DRI_Core"
++#define LINKED_DRI_SWRAST "DRI_SWRast"
++#define LINKED_DRI_COPY_SUB_BUFFER "DRI_CopySubBuffer"
++
++typedef struct {
++   __DRIextension base;
++   struct dri_screen *(*createNewScreen)(int, const __DRIextension **,
++                                         const struct dri_config ***, void *);
++   __DRIcreateNewDrawableFunc createNewDrawable;
++   struct dri_context *(*createNewContextForAPI)(struct dri_screen *, int,
++                                                  const struct dri_config *,
++                                                  struct dri_context *, void *);
++   __DRIcreateContextAttribsFunc createContextAttribs;
++   struct dri_screen *(*createNewScreen2)(int, const __DRIextension **,
++                                          const __DRIextension **,
++                                          const struct dri_config ***, void *);
++   int (*queryBufferAge)(struct dri_drawable *);
++   struct dri_screen *(*createNewScreen3)(int, const __DRIextension **,
++                                          const __DRIextension **,
++                                          const struct dri_config ***, bool,
++                                          void *);
++} linkedSWRastExtensionRec;
++
++typedef struct {
++   __DRIextension base;
++   void (*copySubBuffer)(struct dri_drawable *, int, int, int, int);
++} linkedCopySubBufferExtensionRec;
++
++static struct dri_screen *
++linkedCreateNewScreen3(int scrn, const __DRIextension **extensions,
++                       const __DRIextension **driver_extensions,
++                       const struct dri_config ***driver_configs,
++                       bool driver_name_is_inferred, void *data)
++{
++   (void) driver_extensions;
++   return driCreateNewScreen3(scrn, -1, extensions, DRI_SCREEN_SWRAST,
++                              driver_configs, driver_name_is_inferred,
++                              true, data);
++}
++
++static struct dri_screen *
++linkedCreateNewScreen2(int scrn, const __DRIextension **extensions,
++                       const __DRIextension **driver_extensions,
++                       const struct dri_config ***driver_configs, void *data)
++{
++   return linkedCreateNewScreen3(scrn, extensions, driver_extensions,
++                                 driver_configs, false, data);
++}
++
++static struct dri_screen *
++linkedCreateNewScreen(int scrn, const __DRIextension **extensions,
++                      const struct dri_config ***driver_configs, void *data)
++{
++   return linkedCreateNewScreen3(scrn, extensions, NULL, driver_configs,
++                                 false, data);
++}
++
++static const __DRIextension **
++linkedGetExtensions(struct dri_screen *screen)
++{
++   return screen->screen_extensions;
++}
++
++static struct dri_drawable *
++linkedCreateNewDrawable(struct dri_screen *screen,
++                        const struct dri_config *config, void *data)
++{
++   return dri_create_drawable(screen, config, false, data);
++}
++
++static struct dri_context *
++linkedCreateContextAttribs(struct dri_screen *screen, int api,
++                           const struct dri_config *config,
++                           struct dri_context *shared, unsigned num_attribs,
++                           const uint32_t *attribs, unsigned *error, void *data)
++{
++   return driCreateContextAttribs(screen, api, config, shared, num_attribs,
++                                  attribs, error, data, false);
++}
++
++static struct dri_context *
++linkedCreateNewContextForAPI(struct dri_screen *screen, int api,
++                             const struct dri_config *config,
++                             struct dri_context *shared, void *data)
++{
++   unsigned error;
++   return linkedCreateContextAttribs(screen, api, config, shared, 0, NULL,
++                                     &error, data);
++}
++
++static struct dri_context *
++linkedCreateNewContext(struct dri_screen *screen,
++                       const struct dri_config *config,
++                       struct dri_context *shared, void *data)
++{
++   return linkedCreateNewContextForAPI(screen, __DRI_API_OPENGL, config,
++                                       shared, data);
++}
++
++static const __DRIcoreExtension linkedCoreExtension = {
++   .base = { LINKED_DRI_CORE, 2 },
++   .destroyScreen = driDestroyScreen,
++   .getExtensions = linkedGetExtensions,
++   .getConfigAttrib = driGetConfigAttrib,
++   .indexConfigAttrib = driIndexConfigAttrib,
++   .destroyDrawable = driDestroyDrawable,
++   .swapBuffers = driSwapBuffers,
++   .createNewContext = linkedCreateNewContext,
++   .copyContext = driCopyContext,
++   .destroyContext = driDestroyContext,
++   .bindContext = driBindContext,
++   .unbindContext = driUnbindContext,
++   .swapBuffersWithDamage = driSwapBuffersWithDamage,
++};
++
++static const linkedSWRastExtensionRec linkedSWRastExtension = {
++   .base = { LINKED_DRI_SWRAST, 5 },
++   .createNewScreen = linkedCreateNewScreen,
++   .createNewDrawable = linkedCreateNewDrawable,
++   .createNewContextForAPI = linkedCreateNewContextForAPI,
++   .createContextAttribs = linkedCreateContextAttribs,
++   .createNewScreen2 = linkedCreateNewScreen2,
++   .queryBufferAge = driSWRastQueryBufferAge,
++   .createNewScreen3 = linkedCreateNewScreen3,
++};
++
++static const linkedCopySubBufferExtensionRec linkedCopySubBufferExtension = {
++   .base = { LINKED_DRI_COPY_SUB_BUFFER, 1 },
++   .copySubBuffer = driswCopySubBuffer,
++};
++
++const __DRIextension *galliumsw_driver_extensions[] = {
++   &linkedCoreExtension.base,
++   &linkedSWRastExtension.base,
++   &linkedCopySubBufferExtension.base,
++   &gallium_config_options.base,
++   NULL,
++};
++
++const __DRIextension **__driDriverGetExtensions_swrast(void);
++
++PUBLIC const __DRIextension **
++__driDriverGetExtensions_swrast(void)
++{
++   return galliumsw_driver_extensions;
++}
++
++#endif

@@ -1,0 +1,22 @@
+diff --git a/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp b/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
+--- a/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
++++ b/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
+@@ -576,6 +576,10 @@ lp_build_create_jit_compiler_for_module(LLVMExecutionEngineRef *OutJIT,
+ 
+    JIT = builder.create();
+ 
++   if (!JIT) {
++      goto fail;
++   }
++
+    if (cache_out) {
+       LPObjectCache *objcache = new LPObjectCache(cache_out);
+       JIT->setObjectCache(objcache);
+@@ -589,6 +593,7 @@ lp_build_create_jit_compiler_for_module(LLVMExecutionEngineRef *OutJIT,
+       *OutJIT = wrap(JIT);
+       return 0;
+    }
++fail:
+    lp_free_generated_code(*OutCode);
+    *OutCode = 0;
+    delete MM;
