@@ -98,6 +98,8 @@ goal, treat that as a product-design change and compare at least:
 | `flake.lock` | Exact nixpkgs revision and content hash. This transitively pins X.Org and linked dependencies. |
 | `package.nix` | Core build: static-libxcvt workaround, embedded keymap, Xvfb override, stripping, license extraction, and manifest generation. |
 | `build.sh` | Docker-only entry point and reproducible archive/checksum assembly. |
+| `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
+| `nix-build-cached.sh` | In-container build wrapper: configures public cache reads and pushes new paths when authenticated. |
 | `release.sh` | Local maintainer helper that selects the next release revision, commits it when needed, creates a signed tag, and atomically pushes it to GitHub. |
 | `patches/xserver-0001-xkb-env-overrides.patch` | Makes the legacy xkbcomp path shell-free and adds explicit path overrides. Retained even though the embedded-keymap path makes it normally unreachable. |
 | `patches/xserver-0002-embedded-keymap.patch` | Loads the compiled XKM blob from memory, bypasses runtime rules lookup/xkbcomp, and rejects unsupported string-keymap compilation. |
@@ -123,6 +125,15 @@ goal, treat that as a product-design change and compare at least:
 
 The host needs only Docker. Files created as root in the container are handed
 back to the invoking host UID/GID before exit.
+
+When `CACHIX_CACHE_NAME` is set, `build.sh` installs the Cachix client from
+the locked nixpkgs input inside the container and configures that public
+binary cache as a substituter. When `CACHIX_AUTH_TOKEN` and the self-managed
+`CACHIX_SIGNING_KEY` are also set, the build runs under `cachix watch-exec`,
+signs newly built store paths locally, and uploads them. CI pull requests
+receive anonymous read access only; trusted branch and release builds receive
+the repository secrets and may write. The cache is an optimization, not
+reproducibility evidence; periodically test with it disabled.
 
 The build currently needs
 `NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1` and `--impure`. This is not a
