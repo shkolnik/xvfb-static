@@ -8,15 +8,24 @@ permissions:
   contents: read
 jobs:
   build-and-smoke:
-    runs-on: ubuntu-24.04
+    name: Build and smoke-test (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - run: ./build.sh x86_64
-      - run: ./test/smoke.sh out/x86_64/static-xvfb-linux-x86_64.tar.gz
+      - run: ./build.sh "${{ matrix.arch }}"
+      - run: ./test/smoke.sh "out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
-          name: static-xvfb-linux-x86_64
+          name: static-xvfb-linux-${{ matrix.arch }}
           path: |
-            out/x86_64/static-xvfb-linux-x86_64.tar.gz
-            out/x86_64/SHA256SUMS
+            out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz
+            out/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error

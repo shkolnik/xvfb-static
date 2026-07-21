@@ -5,14 +5,18 @@
 
   outputs = { nixpkgs, ... }:
     let
-      host = import nixpkgs { system = "x86_64-linux"; };
+      x86Host = import nixpkgs { system = "x86_64-linux"; };
+      armHost = import nixpkgs { system = "aarch64-linux"; };
       mk = pkgs: pkgs.callPackage ./package.nix { };
     in {
       packages.x86_64-linux = {
-        default = mk host.pkgsStatic;
-        static-xvfb-x86_64 = mk host.pkgsStatic;
-        static-xvfb-aarch64 = mk host.pkgsCross.aarch64-multiplatform.pkgsStatic;
+        default = mk x86Host.pkgsStatic;
+        static-xvfb-x86_64 = mk x86Host.pkgsStatic;
+      };
+
+      packages.aarch64-linux = {
+        default = mk armHost.pkgsStatic;
+        static-xvfb-aarch64 = mk armHost.pkgsStatic;
       };
     };
 }
-

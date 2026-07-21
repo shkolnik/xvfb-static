@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-archive="${1:-$root/out/x86_64/static-xvfb-linux-x86_64.tar.gz}"
+archive="${1:-}"
+if [[ -z "$archive" ]]; then
+  case "$(uname -m)" in
+    x86_64|amd64) arch="x86_64" ;;
+    aarch64|arm64) arch="aarch64" ;;
+    *) echo "unsupported host architecture: $(uname -m)" >&2; exit 2 ;;
+  esac
+  archive="$root/out/$arch/static-xvfb-linux-$arch.tar.gz"
+fi
 test -s "$archive" || { echo "missing archive: $archive" >&2; exit 1; }
 tmp="$(mktemp -d /tmp/static-xvfb-smoke.XXXXXX)"
 name="static-xvfb-smoke-$$"

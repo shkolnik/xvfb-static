@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-arch="${1:-x86_64}"
+arch="${1:-}"
+if [[ -z "$arch" ]]; then
+  case "$(uname -m)" in
+    x86_64|amd64) arch="x86_64" ;;
+    aarch64|arm64) arch="aarch64" ;;
+    *) echo "unsupported host architecture: $(uname -m)" >&2; exit 2 ;;
+  esac
+fi
 case "$arch" in
   x86_64|aarch64) ;;
   *) echo "usage: ./build.sh [x86_64|aarch64]" >&2; exit 2 ;;

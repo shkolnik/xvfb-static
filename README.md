@@ -16,9 +16,8 @@ X.Org X Server, its static dependencies, and the build tools are pinned by
 
 Published GitHub Releases will contain:
 
-- `static-xvfb-linux-x86_64.tar.gz` (built and boot-tested on x86_64)
-- `static-xvfb-linux-aarch64.tar.gz` (cross-built; see the release notes for
-  its runtime-verification status)
+- `static-xvfb-linux-x86_64.tar.gz`
+- `static-xvfb-linux-aarch64.tar.gz`
 - `SHA256SUMS`
 
 Each archive contains `bin/Xvfb`, a machine-readable manifest, and the exact
@@ -29,15 +28,19 @@ third-party license texts applicable to the binary.
 Docker is the only host prerequisite:
 
 ```sh
-./build.sh x86_64
-./test/smoke.sh out/x86_64/static-xvfb-linux-x86_64.tar.gz
+./build.sh
+./test/smoke.sh
 ```
 
-The output is written under `out/<architecture>/`. You can also build with an
-existing flakes-enabled Nix installation:
+With no argument, both scripts select the host architecture. You can pass
+`x86_64` or `aarch64` to `build.sh`, and an explicit archive path to the smoke
+test. Output is written under `out/<architecture>/`.
+
+You can also build the native package with an existing flakes-enabled Nix
+installation:
 
 ```sh
-NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 nix build .#static-xvfb-x86_64 --impure
+NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 nix build .#default --impure
 ```
 
 ## Verify a download
@@ -76,4 +79,3 @@ new byte set gets a new immutable version tag.
 Original build code and patches are Apache-2.0 licensed. Xvfb and its linked
 dependencies retain their respective licenses. Every archive carries the
 relevant texts; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-
