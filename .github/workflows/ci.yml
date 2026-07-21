@@ -36,6 +36,12 @@ jobs:
           CACHIX_SIGNING_KEY: ${{ github.event_name != 'pull_request' && secrets.CACHIX_SIGNING_KEY || '' }}
       - if: matrix.variant == 'standard'
         run: ./test/smoke.sh "out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz"
+      - if: matrix.variant == 'standard'
+        run: ./test/integration.sh "${{ matrix.arch }}"
+        env:
+          CACHIX_CACHE_NAME: xvfb-static
+          CACHIX_AUTH_TOKEN: ${{ github.event_name != 'pull_request' && secrets.CACHIX_AUTH_TOKEN || '' }}
+          CACHIX_SIGNING_KEY: ${{ github.event_name != 'pull_request' && secrets.CACHIX_SIGNING_KEY || '' }}
       - if: matrix.variant == 'glx'
         name: Build GLX alpha archive
         env:
@@ -85,3 +91,12 @@ jobs:
             out/glx-alpha/${{ matrix.arch }}/xvfb-static-glx-alpha-linux-${{ matrix.arch }}.tar.gz
             out/glx-alpha/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
+
+  build-success:
+    name: build-success
+    if: always()
+    needs: build-and-smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every build and test to pass
+        run: test "${{ needs.build-and-smoke.result }}" = success

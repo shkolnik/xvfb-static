@@ -5,6 +5,7 @@ let
   static = pkgs.pkgsStatic;
   mesaLLVMpipe = import /src/mesa-llvmpipe.nix { inherit system; };
   targetLLVM = mesaLLVMpipe.targetLLVM;
+  profiles = import /src/keyboard-profiles.nix;
   libxcvtStatic = static.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -16,20 +17,26 @@ let
       (map (dependency:
         if (dependency.pname or "") == "libxcvt" then libxcvtStatic else dependency
       ) dependencies);
-  keymapSource = builtins.toFile "xvfb-static-glx-keymap.xkb" ''
-    xkb_keymap "default" {
-      xkb_keycodes { include "evdev+aliases(qwerty)" };
-      xkb_types { include "complete" };
-      xkb_compatibility { include "complete" };
-      xkb_symbols { include "pc+us+inet(evdev)" };
-      xkb_geometry { include "pc(pc105)" };
-    };
-  '';
-  keymapBlob = static.runCommand "xvfb-static-glx-keymap.xkm" {
+  profileInputs = map (profile: profile // {
+    symbolInclude = profile.layout + (if profile.variant == "" then "" else "(${profile.variant})");
+  }) profiles;
+  keymapBlobs = static.runCommand "xvfb-static-glx-keymaps" {
     nativeBuildInputs = [ static.xkbcomp ];
   } ''
-    xkbcomp -I${static.xkeyboard_config}/share/X11/xkb -xkm ${keymapSource} $out
-    test -s $out
+    mkdir -p $out
+    ${builtins.concatStringsSep "\n" (map (profile: ''
+      cat > ${profile.id}.xkb <<'EOF'
+      xkb_keymap "${profile.id}" {
+        xkb_keycodes { include "evdev+aliases(qwerty)" };
+        xkb_types { include "complete" };
+        xkb_compatibility { include "complete" };
+        xkb_symbols { include "pc+${profile.symbolInclude}+inet(evdev)" };
+        xkb_geometry { include "pc(pc105)" };
+      };
+      EOF
+      xkbcomp -I${static.xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
+      test -s $out/${profile.id}.xkm
+    '') profileInputs)}
   '';
   xvfbGlx = static.xvfb.overrideAttrs (old: {
   pname = "xvfb-static-glx";
@@ -48,17 +55,28 @@ let
   patches = (old.patches or [ ]) ++ [
     /src/patches/xserver-0001-xkb-env-overrides.patch
     /src/patches/xserver-0002-embedded-keymap.patch
+    /src/patches/xserver-0003-keyboard-profile-option.patch
     /src/patches/xserver-0003-linked-swrast.patch
   ];
   postPatch = (old.postPatch or "") + ''
     substituteInPlace hw/vfb/meson.build \
       --replace-fail 'dependencies: common_dep,' \
       "dependencies: common_dep, link_args: '-Wl,--gc-sections',"
-    {
-      echo 'static const unsigned char xvfb_static_keymap_xkm[] = {'
-      od -An -v -tu1 ${keymapBlob} | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/'
-      echo '};'
-    } > xkb/xvfb_static_keymap_blob.h
+    header=xkb/xvfb_static_keymap_blob.h
+    : > "$header"
+    ${builtins.concatStringsSep "\n" (map (profile: ''
+      echo 'static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}[] = {' >> "$header"
+      od -An -v -tu1 ${keymapBlobs}/${profile.id}.xkm | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/' >> "$header"
+      echo '};' >> "$header"
+    '') profiles)}
+    cat >> "$header" <<'EOF'
+    struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };
+    static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {
+    EOF
+    ${builtins.concatStringsSep "\n" (map (profile: ''
+      echo '{ "${profile.id}", xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}, sizeof(xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}) },' >> "$header"
+    '') profiles)}
+    echo '};' >> "$header"
   '';
   postInstall = (old.postInstall or "") + ''
     chmod u+w $out/bin/Xvfb
@@ -159,6 +177,7 @@ static.runCommand "xvfb-static-glx-alpha-${releaseVersion}" {
     --arg mesa_version "${mesaLLVMpipe.version}" \
     --arg llvm_version "${targetLLVM.version}" \
     --argjson files "$files" \
-    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:1,arch:$arch,variant:"glx",maturity:"alpha",renderer:"llvmpipe",components:{"xorg-server":$xorg_version,mesa:$mesa_version,llvm:$llvm_version},files:$files}' \
+    --argjson keyboard_profiles '${builtins.toJSON profiles}' \
+    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,variant:"glx",maturity:"alpha",renderer:"llvmpipe",components:{"xorg-server":$xorg_version,mesa:$mesa_version,llvm:$llvm_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
     > $out/share/xvfb-static/manifest.json
 ''

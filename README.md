@@ -8,9 +8,35 @@ X.Org X Server, its static dependencies, and the build tools are pinned by
 `flake.lock`; archive ownership, ordering, locale, and timestamps are fixed.
 
 > [!IMPORTANT]
-> This build embeds one keyboard layout: `evdev` / `pc105` / `us`. Runtime
-> keymap selection is intentionally unsupported. Use a distribution Xvfb if
-> you need arbitrary layouts or a conventional XKB installation.
+> This build embeds a curated keyboard-profile catalog. Select a profile at
+> startup with `-keyboard PROFILE`; arbitrary layouts and live switching remain
+> unsupported. Use a distribution Xvfb if you need a conventional XKB installation.
+
+## Keyboard profiles
+
+Xvfb defaults to US QWERTY. Select one of the 28 embedded, precompiled profiles:
+
+```sh
+Xvfb :99 -keyboard de
+```
+
+```text
+us          us-intl     gb          de          fr          es
+latam       it          pt          br          pl          cz
+tr          se          ru          ua          gr          il
+ara         vn          be          ch          nl          dk
+no          fi          rs          rs-latin
+```
+
+The catalog covers common Latin layouts plus Cyrillic, Greek, Hebrew, Arabic,
+and Vietnamese input, but does not claim arbitrary XKB support.
+Japanese, Korean, Chinese, and Indic text entry are deferred because their
+normal input paths require composition or an input method; embedding a
+physical layout alone would not provide honest language support.
+
+See [the input architecture recommendations](docs/KEYBOARD-INPUT-ARCHITECTURE.md)
+for profile selection, keystroke planning, injection, and
+verification layers.
 
 The standard artifacts disable GLX to minimize size and dependency surface.
 Separate **GLX alpha** artifacts embed Mesa llvmpipe for software-rendered,
@@ -121,8 +147,8 @@ maturity, llvmpipe renderer, and pinned Mesa and LLVM versions.
 ## Why the X server is patched
 
 Stock Xvfb loads XKB rules and invokes `xkbcomp` at runtime. That prevents a
-single-file distribution. This project compiles a fixed US keymap during the
-build and embeds the resulting XKM data in Xvfb. The patches also make the
+single-file distribution. This project compiles the curated profile catalog
+during the build and embeds the resulting XKM data in Xvfb. The patches also make the
 unsupported dynamic-keymap path fail explicitly instead of silently choosing
 a different layout.
 

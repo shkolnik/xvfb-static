@@ -1,7 +1,9 @@
 { xvfb, runCommand, xkeyboard_config, stdenv, gnutar, gzip, jq, pixman, zlib, libmd
 , xkbcomp, libxcvt, xorg-server, libx11, libxext, libxfont_2
+, corruptEmbeddedProfile ? null
 }:
 let
+  profiles = import ./keyboard-profiles.nix;
   libxcvtStatic = libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -13,20 +15,26 @@ let
       (map (dependency:
         if (dependency.pname or "") == "libxcvt" then libxcvtStatic else dependency
       ) dependencies);
-  keymapSource = builtins.toFile "xvfb-static-keymap.xkb" ''
-    xkb_keymap "default" {
-      xkb_keycodes { include "evdev+aliases(qwerty)" };
-      xkb_types { include "complete" };
-      xkb_compatibility { include "complete" };
-      xkb_symbols { include "pc+us+inet(evdev)" };
-      xkb_geometry { include "pc(pc105)" };
-    };
-  '';
-  keymapBlob = runCommand "xvfb-static-keymap.xkm" {
+  profileInputs = map (profile: profile // {
+    symbolInclude = profile.layout + (if profile.variant == "" then "" else "(${profile.variant})");
+  }) profiles;
+  keymapBlobs = runCommand "xvfb-static-keymaps" {
     nativeBuildInputs = [ xkbcomp ];
   } ''
-    xkbcomp -I${xkeyboard_config}/share/X11/xkb -xkm ${keymapSource} $out
-    test -s $out
+    mkdir -p $out
+    ${builtins.concatStringsSep "\n" (map (profile: ''
+      cat > ${profile.id}.xkb <<'EOF'
+      xkb_keymap "${profile.id}" {
+        xkb_keycodes { include "evdev+aliases(qwerty)" };
+        xkb_types { include "complete" };
+        xkb_compatibility { include "complete" };
+        xkb_symbols { include "pc+${profile.symbolInclude}+inet(evdev)" };
+        xkb_geometry { include "pc(pc105)" };
+      };
+      EOF
+      xkbcomp -I${xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
+      test -s $out/${profile.id}.xkm
+    '') profileInputs)}
   '';
   xvfbPatched = xvfb.overrideAttrs (old: {
     pname = "xvfb-static";
@@ -36,13 +44,27 @@ let
     patches = (old.patches or [ ]) ++ [
       ./patches/xserver-0001-xkb-env-overrides.patch
       ./patches/xserver-0002-embedded-keymap.patch
+      ./patches/xserver-0003-keyboard-profile-option.patch
     ];
     postPatch = (old.postPatch or "") + ''
-      {
-        echo 'static const unsigned char xvfb_static_keymap_xkm[] = {'
-        od -An -v -tu1 ${keymapBlob} | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/'
-        echo '};'
-      } > xkb/xvfb_static_keymap_blob.h
+      header=xkb/xvfb_static_keymap_blob.h
+      : > "$header"
+      ${builtins.concatStringsSep "\n" (map (profile: ''
+        echo 'static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}[] = {' >> "$header"
+        od -An -v -tu1 ${keymapBlobs}/${profile.id}.xkm | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/' >> "$header"
+        echo '};' >> "$header"
+      '') profiles)}
+      cat >> "$header" <<'EOF'
+      struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };
+      static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {
+      EOF
+      ${builtins.concatStringsSep "\n" (map (profile: ''
+        echo '{ "${profile.id}", xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}, sizeof(xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}) },' >> "$header"
+      '') profiles)}
+      echo '};' >> "$header"
+      ${if corruptEmbeddedProfile == null then "" else ''
+        sed -i '/static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] corruptEmbeddedProfile}/ { n; s/[0-9][0-9]*/0/; }' "$header"
+      ''}
     '';
   });
   releaseRevision = 2;
@@ -88,6 +110,7 @@ in runCommand "xvfb-static-${releaseVersion}" {
   jq -n --arg arch "${stdenv.hostPlatform.parsed.cpu.name}" \
     --arg version "${releaseVersion}" --argjson revision ${toString releaseRevision} \
     --arg xorg_version "${xvfbPatched.version}" --argjson files "$files" \
-    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:1,arch:$arch,components:{"xorg-server":$xorg_version},files:$files}' \
+    --argjson keyboard_profiles '${builtins.toJSON profiles}' \
+    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,components:{"xorg-server":$xorg_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
     > $out/share/xvfb-static/manifest.json
 ''

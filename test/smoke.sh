@@ -31,13 +31,33 @@ manifest_files="$tmp/manifest-files"
 (cd "$tmp" && find bin share -type f | LC_ALL=C sort) > "$actual_files"
 jq -er '.files[]' "$tmp/share/xvfb-static/manifest.json" | LC_ALL=C sort > "$manifest_files"
 diff -u "$manifest_files" "$actual_files"
+test "$(find "$tmp" -type f \( -name xkbcomp -o -name '*.xkm' \) | wc -l)" -eq 0
+test ! -d "$tmp/share/X11/xkb"
+jq -e '.schema_version == 2 and .keyboard.default == "us" and
+  (.keyboard.profiles | length) == 28 and
+  ([.keyboard.profiles[].id] | index("us-intl")) != null and
+  ([.keyboard.profiles[].id] | index("rs-latin")) != null' \
+  "$tmp/share/xvfb-static/manifest.json" >/dev/null
 docker run --name "$name" --rm -v "$tmp":/package:ro alpine:3.20 sh -eu -c '
-  /package/bin/Xvfb :94 -screen 0 1280x1024x24 -nolisten tcp -fp built-ins >/tmp/xvfb.log 2>&1 &
-  pid=$!
-  sleep 2
-  kill -0 "$pid"
-  test ! -s /tmp/xvfb.log
-  kill "$pid"
-  wait "$pid" || true
+  boot() {
+    display="$1"; shift
+    /package/bin/Xvfb ":$display" "$@" -screen 0 1280x1024x24 -nolisten tcp -fp built-ins >"/tmp/xvfb-$display.log" 2>&1 &
+    pid=$!
+    sleep 2
+    kill -0 "$pid"
+    kill "$pid"
+    wait "$pid" || true
+  }
+  boot 94
+  test ! -s /tmp/xvfb-94.log
+  boot 95 -keyboard ru
+  grep -q "selected keyboard profile: ru" /tmp/xvfb-95.log
+  boot 96 -keyboard us-intl
+  grep -q "selected keyboard profile: us-intl" /tmp/xvfb-96.log
+  if /package/bin/Xvfb :97 -keyboard unsupported >/tmp/invalid.log 2>&1; then
+    echo "invalid keyboard profile unexpectedly booted" >&2
+    exit 1
+  fi
+  grep -q "unknown keyboard profile.*unsupported" /tmp/invalid.log
 '
 echo "xvfb-static smoke test passed"
