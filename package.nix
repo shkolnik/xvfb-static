@@ -6,6 +6,11 @@ let
       substituteInPlace lib/meson.build --replace-fail 'shared_library(' 'library('
     '';
   });
+  prepareXvfbDependencies = dependencies:
+    builtins.filter (dependency: (dependency.pname or "") != "libglvnd")
+      (map (dependency:
+        if (dependency.pname or "") == "libxcvt" then libxcvtStatic else dependency
+      ) dependencies);
   keymapSource = builtins.toFile "static-xvfb-keymap.xkb" ''
     xkb_keymap "default" {
       xkb_keycodes { include "evdev+aliases(qwerty)" };
@@ -23,7 +28,9 @@ let
   '';
   xvfb = xorg.xvfb.overrideAttrs (old: {
     pname = "static-xvfb";
-    buildInputs = (builtins.filter (d: (d.pname or "") != "libxcvt") old.buildInputs) ++ [ libxcvtStatic ];
+    buildInputs = prepareXvfbDependencies (old.buildInputs or [ ]);
+    propagatedBuildInputs = prepareXvfbDependencies (old.propagatedBuildInputs or [ ]);
+    mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dglx=false" ];
     patches = (old.patches or [ ]) ++ [
       ./patches/xserver-0001-xkb-env-overrides.patch
       ./patches/xserver-0002-embedded-keymap.patch

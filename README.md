@@ -12,6 +12,9 @@ X.Org X Server, its static dependencies, and the build tools are pinned by
 > keymap selection is intentionally unsupported. Use a distribution Xvfb if
 > you need arbitrary layouts or a conventional XKB installation.
 
+GLX is disabled because its GLVND implementation requires shared libraries
+and is incompatible with this project's fully static artifact contract.
+
 ## Download
 
 Published GitHub Releases will contain:
