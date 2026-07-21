@@ -25,6 +25,12 @@ test -s "$tmp/share/xvfb-static/manifest.json"
 test -d "$tmp/share/xvfb-static/licenses"
 test "$(find "$tmp/bin" -maxdepth 1 -type f | wc -l)" -eq 1
 file "$tmp/bin/Xvfb" | grep -q 'statically linked'
+test -z "$(find "$tmp/share/xvfb-static/licenses" -type f -empty -print -quit)"
+actual_files="$tmp/actual-files"
+manifest_files="$tmp/manifest-files"
+(cd "$tmp" && find bin share -type f | LC_ALL=C sort) > "$actual_files"
+jq -er '.files[]' "$tmp/share/xvfb-static/manifest.json" | LC_ALL=C sort > "$manifest_files"
+diff -u "$manifest_files" "$actual_files"
 docker run --name "$name" --rm -v "$tmp":/package:ro alpine:3.20 sh -eu -c '
   /package/bin/Xvfb :94 -screen 0 1280x1024x24 -nolisten tcp -fp built-ins >/tmp/xvfb.log 2>&1 &
   pid=$!

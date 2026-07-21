@@ -1,8 +1,10 @@
+{ system ? builtins.currentSystem }:
 let
   flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+  pkgs = import flake.inputs.nixpkgs { inherit system; };
   static = pkgs.pkgsStatic;
-  mesaLLVMpipe = import /src/mesa-llvmpipe.nix;
+  mesaLLVMpipe = import /src/mesa-llvmpipe.nix { inherit system; };
+  targetLLVM = mesaLLVMpipe.targetLLVM;
   libxcvtStatic = static.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -29,9 +31,8 @@ let
     xkbcomp -I${static.xkeyboard_config}/share/X11/xkb -xkm ${keymapSource} $out
     test -s $out
   '';
-in
-static.xvfb.overrideAttrs (old: {
-  pname = "xvfb-static-glx-prototype";
+  xvfbGlx = static.xvfb.overrideAttrs (old: {
+  pname = "xvfb-static-glx";
   NIX_LDFLAGS = (old.NIX_LDFLAGS or "") + " -lstdc++";
   buildInputs = prepareDependencies (old.buildInputs or [ ]) ++ [
     mesaLLVMpipe
@@ -63,4 +64,93 @@ static.xvfb.overrideAttrs (old: {
     chmod u+w $out/bin/Xvfb
     ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
   '';
-})
+  });
+  standardPackage = static.callPackage /src/package.nix { };
+  releaseVersion = standardPackage.releaseVersion;
+  releaseRevision = standardPackage.releaseRevision;
+  nativeBuildInputs = [
+    static.gnutar
+    static.gzip
+    static.jq
+    static.xz
+    static.stdenv.cc.bintools
+  ];
+in
+static.runCommand "xvfb-static-glx-alpha-${releaseVersion}" {
+  inherit nativeBuildInputs;
+  passthru = {
+    inherit releaseRevision releaseVersion;
+    upstreamVersion = xvfbGlx.version;
+    mesaVersion = mesaLLVMpipe.version;
+    llvmVersion = targetLLVM.version;
+    variant = "glx";
+    maturity = "alpha";
+  };
+} ''
+  set -euo pipefail
+  mkdir -p $out/bin $out/share/xvfb-static/licenses
+  cp ${xvfbGlx}/bin/Xvfb $out/bin/Xvfb
+  chmod u+w $out/bin/Xvfb
+  ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
+
+  extract_license() {
+    src="$1"; rel="$2"; dest="$3"
+    if [ -d "$src" ]; then
+      test -s "$src/$rel"
+      cp "$src/$rel" "$dest"
+    else
+      matches="$(tar -tf "$src" --wildcards "*/$rel")"
+      test "$(printf '%s\n' "$matches" | grep -c .)" -eq 1
+      tar -xf "$src" -O "$matches" > "$dest"
+      test -s "$dest"
+    fi
+  }
+
+  L=$out/share/xvfb-static/licenses
+  extract_license ${static.xorg-server.src} COPYING $L/xorg-server.COPYING
+  extract_license ${static.xkbcomp.src} COPYING $L/xkbcomp.COPYING
+  extract_license ${static.xkeyboard_config.src} COPYING $L/xkeyboard-config.COPYING
+  extract_license ${static.libx11.src} COPYING $L/libX11.COPYING
+  extract_license ${static.libxext.src} COPYING $L/libXext.COPYING
+  extract_license ${static.libxfont_2.src} COPYING $L/libXfont2.COPYING
+  extract_license ${static.libxcvt.src} COPYING $L/libxcvt.COPYING
+  extract_license ${static.pixman.src} COPYING $L/pixman.COPYING
+  extract_license ${static.zlib.src} LICENSE $L/zlib.LICENSE
+  extract_license ${static.libmd.src} COPYING $L/libmd.COPYING
+
+  extract_license ${static.mesa.src} docs/license.rst $L/mesa.LICENSE
+  extract_license ${targetLLVM.src} llvm/LICENSE.TXT $L/llvm.LICENSE
+  extract_license ${targetLLVM.src} llvm/lib/Support/BLAKE3/LICENSE $L/llvm-BLAKE3.LICENSE
+  extract_license ${targetLLVM.src} llvm/tools/polly/LICENSE.TXT $L/llvm-polly.LICENSE
+  extract_license ${targetLLVM.src} llvm/tools/polly/lib/External/isl/LICENSE $L/llvm-polly-isl.LICENSE
+  extract_license ${targetLLVM.src} llvm/tools/polly/lib/External/isl/imath/LICENSE $L/llvm-polly-isl-imath.LICENSE
+  extract_license ${static.libdrm.src} COPYING $L/libdrm.COPYING
+  extract_license ${static.libxshmfence.src} COPYING $L/libxshmfence.COPYING
+  extract_license ${static.libxrandr.src} COPYING $L/libXrandr.COPYING
+  extract_license ${static.libxrender.src} COPYING $L/libXrender.COPYING
+  extract_license ${static.libxxf86vm.src} COPYING $L/libXxf86vm.COPYING
+  extract_license ${static.libxcb.src} COPYING $L/libxcb.COPYING
+  extract_license ${static.libxau.src} COPYING $L/libXau.COPYING
+  extract_license ${static.libxdmcp.src} COPYING $L/libXdmcp.COPYING
+  extract_license ${static.libxfixes.src} COPYING $L/libXfixes.COPYING
+  extract_license ${static.libunwind.src} LICENSE $L/libunwind.LICENSE
+  extract_license ${static.libunwind.src} COPYING $L/libunwind.COPYING
+  extract_license ${static.ncurses.src} COPYING $L/ncurses.COPYING
+  extract_license ${static.stdenv.cc.cc.src} COPYING3 $L/libstdc++-COPYING3
+  extract_license ${static.stdenv.cc.cc.src} COPYING.RUNTIME $L/libstdc++-COPYING.RUNTIME
+
+  files=$(cd $out && find . -type f | cut -c3- | {
+    cat
+    echo share/xvfb-static/manifest.json
+  } | LC_ALL=C sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
+  jq -n \
+    --arg arch "${static.stdenv.hostPlatform.parsed.cpu.name}" \
+    --arg version "${releaseVersion}" \
+    --argjson revision ${toString releaseRevision} \
+    --arg xorg_version "${xvfbGlx.version}" \
+    --arg mesa_version "${mesaLLVMpipe.version}" \
+    --arg llvm_version "${targetLLVM.version}" \
+    --argjson files "$files" \
+    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:1,arch:$arch,variant:"glx",maturity:"alpha",renderer:"llvmpipe",components:{"xorg-server":$xorg_version,mesa:$mesa_version,llvm:$llvm_version},files:$files}' \
+    > $out/share/xvfb-static/manifest.json
+''

@@ -1,6 +1,7 @@
+{ system ? builtins.currentSystem }:
 let
   flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+  pkgs = import flake.inputs.nixpkgs { inherit system; };
   static = pkgs.pkgsStatic;
   disabled = static.emptyDirectory;
   targetLLVM = static.llvmPackages.llvm.overrideAttrs (old: {
@@ -45,6 +46,7 @@ let
   };
 in
 mesa.overrideAttrs (old: {
+  passthru = (old.passthru or { }) // { inherit targetLLVM; };
   patches = (old.patches or [ ]) ++ [
     ./patches/mesa-0001-check-jit-before-use.patch
     ./patches/mesa-0002-linked-swrast-entrypoint.patch

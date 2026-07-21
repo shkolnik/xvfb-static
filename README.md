@@ -12,8 +12,11 @@ X.Org X Server, its static dependencies, and the build tools are pinned by
 > keymap selection is intentionally unsupported. Use a distribution Xvfb if
 > you need arbitrary layouts or a conventional XKB installation.
 
-GLX is disabled because its GLVND implementation requires shared libraries
-and is incompatible with this project's fully static artifact contract.
+The standard artifacts disable GLX to minimize size and dependency surface.
+Separate **GLX alpha** artifacts embed Mesa llvmpipe for software-rendered,
+indirect GLX without a host GPU driver or shared library. They are larger and
+remain explicitly experimental while their compatibility receives broader
+testing.
 
 ## Download
 
@@ -21,10 +24,15 @@ Published GitHub Releases will contain:
 
 - `xvfb-static-linux-x86_64.tar.gz`
 - `xvfb-static-linux-aarch64.tar.gz`
+- `xvfb-static-glx-alpha-linux-x86_64.tar.gz`
+- `xvfb-static-glx-alpha-linux-aarch64.tar.gz`
 - `SHA256SUMS`
 
 Each archive contains `bin/Xvfb`, a machine-readable manifest, and the exact
-third-party license texts applicable to the binary.
+third-party license texts applicable to the binary. GLX manifests additionally
+declare `"variant": "glx"`, `"maturity": "alpha"`, and
+`"renderer": "llvmpipe"` so the experimental status survives renaming or
+extraction of the archive.
 
 ## Versions and releases
 
@@ -50,12 +58,14 @@ atomically pushes `main` and the tag to GitHub. In a terminal it previews the
 version and requires confirmation. Use `./release.sh --dry-run` to preview
 without changing files, commits, tags, or remote branches.
 
-Pushing a matching tag builds and smoke-tests x86_64 and aarch64 on native
-GitHub-hosted runners. If both pass and the version in each artifact matches
-the tag, the workflow publishes both archives and a combined `SHA256SUMS` file
-as an immutable GitHub Release. Both archives receive signed build-provenance
-attestations. The exact Nixpkgs revision remains recorded separately in
-`flake.lock` and the release notes.
+Pushing a matching tag builds and smoke-tests the standard and GLX alpha
+variants for x86_64 and aarch64 on native GitHub-hosted runners. The GLX tests
+create an indirect context with llvmpipe, render two colors, and read pixels
+back for verification. If all four artifacts match the tag and pass, the
+workflow publishes them with a combined `SHA256SUMS` file as an immutable
+GitHub Release. Every archive receives a signed build-provenance attestation.
+The exact Nixpkgs revision remains recorded separately in `flake.lock` and the
+release notes.
 
 ## Build
 
@@ -77,6 +87,17 @@ installation:
 NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 nix build .#default --impure
 ```
 
+Build and test the native GLX alpha artifact with:
+
+```sh
+./build-glx.sh x86_64
+./test/smoke.sh out/glx-alpha/x86_64/xvfb-static-glx-alpha-linux-x86_64.tar.gz
+./test/glx-smoke.sh out/glx-alpha/x86_64/xvfb-static-glx-alpha-linux-x86_64.tar.gz
+```
+
+The explicit architecture names accepted by `build-glx.sh` are `x86_64` and
+`aarch64`, matching `build.sh`.
+
 ## Verify a download
 
 ```sh
@@ -92,6 +113,10 @@ The checksum detects altered bytes. The attestation verifies that the archive
 was produced by this repository's release workflow from its tagged commit.
 `file` should report `statically linked`. The smoke test additionally boots the
 server in a clean Alpine container with no X11 packages.
+
+For a GLX alpha download, substitute its full filename in both checksum and
+attestation commands. Its manifest should identify the `glx` variant, `alpha`
+maturity, llvmpipe renderer, and pinned Mesa and LLVM versions.
 
 ## Why the X server is patched
 

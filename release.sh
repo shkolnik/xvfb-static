@@ -159,7 +159,7 @@ if [[ "$evaluated_version" != "$release_version" ]]; then
   exit 1
 fi
 
-bash -n build.sh test/smoke.sh release.sh
+bash -n build.sh build-glx.sh test/smoke.sh test/glx-smoke.sh release.sh
 git diff --check
 if [[ -n "$(git status --short)" ]]; then
   echo "release preparation left unexpected worktree changes" >&2

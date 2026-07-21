@@ -13,3 +13,9 @@ The XKB keymap embedded in the binary is generated from the pinned
 `xkeyboard-config` sources with the pinned `xkbcomp` build tool. Their license
 texts are retained in the archive as well. No third-party source is vendored
 in this repository; patches apply at build time to the exact pinned source.
+
+The GLX alpha archives additionally incorporate Mesa llvmpipe, LLVM (including
+its BLAKE3 support code and Polly's isl/imath components), the GCC C++ runtime,
+and their statically linked support libraries. Their pinned-source license and
+runtime-exception texts are included alongside the X.Org notices in each GLX
+archive. The standard archives do not include the GLX software-rendering stack.
