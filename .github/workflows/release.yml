@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*-r*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  build-and-smoke:
+    name: Build and smoke-test (${{ matrix.arch }})
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./build.sh "${{ matrix.arch }}"
+      - run: ./test/smoke.sh "out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz"
+      - name: Attest release archive
+        uses: actions/attest@v4
+        with:
+          subject-path: out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: static-xvfb-linux-${{ matrix.arch }}
+          path: out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build-and-smoke
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: static-xvfb-linux-*
+          path: dist
+          merge-multiple: true
+      - name: Validate version and assemble release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="$GITHUB_REF_NAME"
+          if [[ ! "$tag" =~ ^v([0-9]+(\.[0-9]+)*)-r([1-9][0-9]*)$ ]]; then
+            echo "invalid release tag: $tag" >&2
+            echo "expected v<upstream-xorg-version>-r<positive-revision>" >&2
+            exit 1
+          fi
+          upstream_version="${BASH_REMATCH[1]}"
+          release_version="${tag#v}"
+
+          for arch in x86_64 aarch64; do
+            archive="dist/static-xvfb-linux-$arch.tar.gz"
+            test -s "$archive"
+            manifest="$(tar -xOf "$archive" share/static-xvfb/manifest.json)"
+            manifest_release="$(jq -er '.version' <<<"$manifest")"
+            manifest_upstream="$(jq -er '.components["xorg-server"]' <<<"$manifest")"
+            if [[ "$manifest_release" != "$release_version" ]]; then
+              echo "$archive declares release $manifest_release, but tag $tag declares $release_version" >&2
+              exit 1
+            fi
+            if [[ "$manifest_upstream" != "$upstream_version" ]]; then
+              echo "$archive contains X.Org Server $manifest_upstream, but tag $tag declares $upstream_version" >&2
+              exit 1
+            fi
+          done
+
+          (
+            cd dist
+            sha256sum \
+              static-xvfb-linux-x86_64.tar.gz \
+              static-xvfb-linux-aarch64.tar.gz > SHA256SUMS
+          )
+
+          nixpkgs_revision="$(jq -er '.nodes.nixpkgs.locked.rev' flake.lock)"
+          {
+            printf 'static-xvfb %s packages X.Org Server %s.\n\n' "$tag" "$upstream_version"
+            printf -- '- x86_64: built and boot-tested on a native GitHub-hosted runner\n'
+            printf -- '- aarch64: built and boot-tested on a native GitHub-hosted runner\n'
+            printf -- '- both archives have GitHub build-provenance attestations\n'
+            printf -- '- nixpkgs revision: `%s`\n' "$nixpkgs_revision"
+            printf -- '- source commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'This build embeds only the `evdev` / `pc105` / `us` keyboard profile. Runtime keymap selection is unsupported.\n'
+          } > release-notes.md
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/static-xvfb-linux-x86_64.tar.gz \
+            dist/static-xvfb-linux-aarch64.tar.gz \
+            dist/SHA256SUMS \
+            --verify-tag \
+            --title "static-xvfb $GITHUB_REF_NAME" \
+            --notes-file release-notes.md

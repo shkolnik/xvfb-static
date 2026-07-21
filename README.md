@@ -26,6 +26,37 @@ Published GitHub Releases will contain:
 Each archive contains `bin/Xvfb`, a machine-readable manifest, and the exact
 third-party license texts applicable to the binary.
 
+## Versions and releases
+
+Release versions follow `v<upstream-xorg-version>-r<revision>`, for example
+`v21.1.20-r1`. The first portion is the X.Org Server version that provides
+Xvfb. The `r` suffix is this project's packaging revision and starts again at
+`r1` when the upstream version changes. Changes to patches, dependencies, the
+toolchain, or packaging that produce new release bytes increment the revision.
+The complete release version and numeric revision are also recorded in each
+archive's manifest. The revision is maintained in `package.nix` and must match
+the release tag.
+
+Maintainers prepare a release from a clean `main` checkout with:
+
+```sh
+./release.sh
+```
+
+The helper fetches GitHub tags, derives the pinned upstream version, selects
+the next revision, updates and commits `package.nix` when necessary, creates a
+signed annotated tag using the maintainer's configured Git signing key, and
+atomically pushes `main` and the tag to GitHub. In a terminal it previews the
+version and requires confirmation. Use `./release.sh --dry-run` to preview
+without changing files, commits, tags, or remote branches.
+
+Pushing a matching tag builds and smoke-tests x86_64 and aarch64 on native
+GitHub-hosted runners. If both pass and the version in each artifact matches
+the tag, the workflow publishes both archives and a combined `SHA256SUMS` file
+as an immutable GitHub Release. Both archives receive signed build-provenance
+attestations. The exact Nixpkgs revision remains recorded separately in
+`flake.lock` and the release notes.
+
 ## Build
 
 Docker is the only host prerequisite:
@@ -50,13 +81,17 @@ NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 nix build .#default --impure
 
 ```sh
 sha256sum --check SHA256SUMS
+gh attestation verify static-xvfb-linux-x86_64.tar.gz \
+  --repo shkolnik/xvfb-static
 tar -xzf static-xvfb-linux-x86_64.tar.gz
 file bin/Xvfb
 bin/Xvfb -version
 ```
 
-`file` should report `statically linked`. The smoke test additionally boots
-the server in a clean Alpine container with no X11 packages.
+The checksum detects altered bytes. The attestation verifies that the archive
+was produced by this repository's release workflow from its tagged commit.
+`file` should report `statically linked`. The smoke test additionally boots the
+server in a clean Alpine container with no X11 packages.
 
 ## Why the X server is patched
 

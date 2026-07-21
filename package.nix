@@ -43,9 +43,17 @@ let
       } > xkb/static_xvfb_keymap_blob.h
     '';
   });
+  releaseRevision = 1;
+  releaseVersion = "${xvfb.version}-r${toString releaseRevision}";
   nativeBuildInputs = [ gnutar gzip jq stdenv.cc.bintools ];
   strip = "${stdenv.cc.targetPrefix}strip";
-in runCommand "static-xvfb-${xvfb.version}" { inherit nativeBuildInputs; } ''
+in runCommand "static-xvfb-${releaseVersion}" {
+  inherit nativeBuildInputs;
+  passthru = {
+    inherit releaseRevision releaseVersion;
+    upstreamVersion = xvfb.version;
+  };
+} ''
   set -euo pipefail
   mkdir -p $out/bin $out/share/static-xvfb/licenses
   cp ${xvfb}/bin/Xvfb $out/bin/Xvfb
@@ -75,7 +83,9 @@ in runCommand "static-xvfb-${xvfb.version}" { inherit nativeBuildInputs; } ''
   extract_license ${zlib.src} LICENSE $L/zlib.COPYING
   extract_license ${libmd.src} COPYING $L/libmd.COPYING
   files=$(cd $out && find . -type f | cut -c3- | { cat; echo share/static-xvfb/manifest.json; } | LC_ALL=C sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
-  jq -n --arg arch "${stdenv.hostPlatform.parsed.cpu.name}" --arg version "${xvfb.version}" --argjson files "$files" \
-    '{name:"static-xvfb",schema_version:1,arch:$arch,components:{"xorg-server":$version},files:$files}' \
+  jq -n --arg arch "${stdenv.hostPlatform.parsed.cpu.name}" \
+    --arg version "${releaseVersion}" --argjson revision ${toString releaseRevision} \
+    --arg xorg_version "${xvfb.version}" --argjson files "$files" \
+    '{name:"static-xvfb",version:$version,revision:$revision,schema_version:1,arch:$arch,components:{"xorg-server":$xorg_version},files:$files}' \
     > $out/share/static-xvfb/manifest.json
 ''

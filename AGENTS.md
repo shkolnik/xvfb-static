@@ -43,7 +43,8 @@ A release archive contains:
 
 - `bin/Xvfb` — a stripped, fully static Linux executable;
 - `share/static-xvfb/manifest.json` — architecture, component version,
-  schema version, and an exact file inventory;
+  static-xvfb release version and revision, schema version, and an exact file
+  inventory;
 - `share/static-xvfb/licenses/` — third-party license texts extracted from
   the exact pinned sources used by the build.
 
@@ -97,6 +98,7 @@ goal, treat that as a product-design change and compare at least:
 | `flake.lock` | Exact nixpkgs revision and content hash. This transitively pins X.Org and linked dependencies. |
 | `package.nix` | Core build: static-libxcvt workaround, embedded keymap, Xvfb override, stripping, license extraction, and manifest generation. |
 | `build.sh` | Docker-only entry point and reproducible archive/checksum assembly. |
+| `release.sh` | Local maintainer helper that selects the next release revision, commits it when needed, creates a signed tag, and atomically pushes it to GitHub. |
 | `patches/xserver-0001-xkb-env-overrides.patch` | Makes the legacy xkbcomp path shell-free and adds explicit path overrides. Retained even though the embedded-keymap path makes it normally unreachable. |
 | `patches/xserver-0002-embedded-keymap.patch` | Loads the compiled XKM blob from memory, bypasses runtime rules lookup/xkbcomp, and rejects unsupported string-keymap compilation. |
 | `test/smoke.sh` | Extracts the archive, checks its shape/static linkage, and boots Xvfb inside clean Alpine. |
@@ -105,6 +107,7 @@ goal, treat that as a product-design change and compare at least:
 | `SECURITY.md` | Supported-version and private-reporting policy. |
 | `CONTRIBUTING.md` | Public contribution expectations and minimum local gates. |
 | `.github/workflows/ci.yml` | Builds and smoke-tests both architectures on native runners, then uploads ephemeral CI artifacts. |
+| `.github/workflows/release.yml` | Validates `v<upstream>-r<revision>` tags, builds and smoke-tests both native architectures, attests both archives, and publishes them with combined checksums. |
 | `.github/dependabot.yml` | Monthly GitHub Actions update checks. It does not update Nix inputs. |
 | `out/` | Ignored local build products. Never treat these as source. |
 
@@ -310,24 +313,42 @@ uncertain licensing questions rather than silently optimizing notices away.
 
 ## 10. CI and release expectations
 
-Current CI builds and smoke-tests x86_64 and aarch64 on matching native
-runners, then uploads workflow artifacts. Those artifacts are ephemeral and
-are not a public GitHub Release.
+CI builds and smoke-tests x86_64 and aarch64 on matching native runners, then
+uploads ephemeral workflow artifacts. Tags matching
+`v<upstream-xorg-version>-r<positive-revision>` trigger the release workflow.
+The upstream portion must match the X.Org Server version in both artifact
+manifests, and the full tag must match the manifest's static-xvfb version. The
+project revision is maintained as `releaseRevision` in `package.nix`, starts at
+`r1`, increments whenever new bytes are released for the same upstream
+version, and resets to `r1` when upstream changes.
 
-Before the first public release, add or verify a release workflow with these
-properties:
+Run `./release.sh` from a clean local `main` checkout to prepare and push a
+release. It derives the upstream version through the same digest-pinned Nix
+Docker image as `build.sh`, considers tags already present on GitHub, and
+updates only `releaseRevision`. Interactive runs require confirmation;
+`--dry-run` previews without changing source, commits, tags, or remote
+branches. Keep the Docker image digest in `release.sh` synchronized with
+`build.sh` whenever the build environment changes.
 
-- it triggers from an intentional version tag or manual release action;
-- it builds x86_64 and aarch64 from the tagged commit;
-- x86_64 receives the real Alpine boot test;
-- aarch64's execution status is stated loudly and accurately;
-- both archives and one unambiguous checksum file are uploaded;
-- release notes identify the X.Org version, nixpkgs revision, architectures,
+The release workflow:
+
+- triggers from an intentional version tag;
+- builds x86_64 and aarch64 from the tagged commit;
+- boot-tests both artifacts in Alpine on matching native runners;
+- uploads both archives and one unambiguous checksum file;
+- identifies the X.Org version, nixpkgs revision, architectures,
   embedded-layout limitation, and verification status;
-- the workflow uses least-privilege GitHub permissions;
-- releases and their assets are immutable;
-- action references should eventually be pinned by commit SHA for stronger
-  supply-chain hygiene.
+- generates Sigstore-backed GitHub build-provenance attestations for both
+  archives before publication;
+- gives build jobs only source-read plus attestation, artifact-metadata, and
+  OIDC permissions, while the publishing job receives artifact-read and
+  release-write permissions;
+- uses `gh release create --verify-tag` so publication cannot synthesize a
+  missing tag.
+
+Immutable releases are enabled in the GitHub repository settings. Published
+release assets and their tags cannot be replaced in place. Action references
+should eventually be pinned by commit SHA for stronger supply-chain hygiene.
 
 Do not claim an architecture is “verified” when it was only cross-compiled.
 Use precise language: built, statically inspected, emulated, or executed on
@@ -345,17 +366,12 @@ In priority order:
 3. **Prove reproducibility.** Build twice from clean output directories (and
    ideally on two hosts) and compare archive SHA-256 values. A persistent Nix
    cache is fine; source output state must not leak between attempts.
-4. **Add a real release workflow.** Current CI does not publish releases.
-5. **Verify aarch64.** Record the first successful native build and smoke test.
-6. **Add explicit negative tests.** Pin the absence of runtime XKB files and
+4. **Verify aarch64.** Record the first successful native build and smoke test.
+5. **Add explicit negative tests.** Pin the absence of runtime XKB files and
    the refusal/failure behavior for unsupported keymap paths.
-7. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
+6. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
    static closure and complement, not replace, license texts.
-8. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
-9. **Choose and document the initial versioning policy.** Semantic Versioning
-    is reasonable: artifact-contract changes are major, dependency rebuilds
-    with unchanged behavior are patch releases, and compatible additions are
-    minor releases.
+7. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
 
 ## 12. Engineering principles
 
