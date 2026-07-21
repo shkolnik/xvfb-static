@@ -38,3 +38,12 @@ jobs:
             out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz
             out/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
+
+  build-success:
+    name: build-success
+    if: always()
+    needs: build-and-smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every build and test to pass
+        run: test "${{ needs.build-and-smoke.result }}" = success
