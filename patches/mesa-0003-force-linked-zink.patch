@@ -1,0 +1,26 @@
+mesa: force Zink for the external-Vulkan linked swrast provider
+
+Why: Xorg names its indirect software DRI provider "swrast" even when the
+Gallium implementation behind that provider is Zink.  With Zink as the only
+compiled Gallium driver, Mesa's software pipe-loader otherwise tries an empty
+default driver name and never reaches zink_create_screen().
+
+What: when the artifact-specific XVFB_STATIC_EXTERNAL_VULKAN define is set,
+ignore GALLIUM_DRIVER and select only Zink.  No llvmpipe or softpipe code is
+compiled into this variant, so there is deliberately no software GL fallback.
+
+diff --git a/src/gallium/auxiliary/target-helpers/sw_helper.h b/src/gallium/auxiliary/target-helpers/sw_helper.h
+--- a/src/gallium/auxiliary/target-helpers/sw_helper.h
++++ b/src/gallium/auxiliary/target-helpers/sw_helper.h
+@@ -154,7 +154,11 @@ sw_screen_create_vk(struct sw_winsys *winsys, const struct pipe_screen_config *c
+ {
+    struct pipe_screen *screen = NULL;
+ 
++#if defined(XVFB_STATIC_EXTERNAL_VULKAN) && defined(GALLIUM_ZINK)
++   const char *drivers[] = { "zink" };
++#else
+    const char *drivers[] = { debug_get_option("GALLIUM_DRIVER", "") };
++#endif
+ 
+    for (unsigned i = 0; i < ARRAY_SIZE(drivers) && !screen; i++) {
+       screen = sw_screen_create_named(winsys, config, drivers[i]);

@@ -1,0 +1,104 @@
+xserver: use the statically linked Mesa swrast driver for indirect GLX
+
+Why: upstream Xorg loads `swrast_dri.so` with `dlopen()` and later closes its
+handle. That cannot work in one static executable with no Mesa driver files.
+
+What: obtain `swrast` extensions from the linked Mesa entrypoint. A non-null
+sentinel preserves Xorg's handle flow without calling `dlclose()` on an
+in-process symbol; other drivers retain the upstream path. Failed Mesa context
+allocation is also rejected rather than returning a partial context.
+
+Maintenance: every cleanup path receiving the sentinel must avoid `dlclose()`;
+recheck them after Xorg updates. This is the consumer half of the Mesa patch.
+Validate the pair by booting the packaged binary and running the indirect
+llvmpipe pixel-readback test, not merely by linking it.
+
+diff --git a/glx/glxdricommon.c b/glx/glxdricommon.c
+--- a/glx/glxdricommon.c
++++ b/glx/glxdricommon.c
+@@ -288,6 +288,9 @@ static const char dri_driver_path[] = DRI_DRIVER_PATH;
+ #define __DRI_DRIVER_GET_EXTENSIONS "__driDriverGetExtensions"
+ #endif
+ 
++extern const __DRIextension **
++__driDriverGetExtensions_swrast(void);
++
+ void *
+ glxProbeDriver(const char *driverName,
+                void **coreExt, const char *coreName, int coreVersion,
+@@ -295,12 +298,31 @@ glxProbeDriver(const char *driverName,
+                void **renderExt, const char *renderName, int renderVersion)
+ {
+     int i;
+-    void *driver;
++    void *driver = NULL;
+     char filename[PATH_MAX];
+     char *get_extensions_name;
+     const __DRIextension **extensions = NULL;
+     const char *path = NULL;
+ 
++    if (strcmp(driverName, "swrast") == 0) {
++        extensions = __driDriverGetExtensions_swrast();
++        if (extensions == NULL)
++            goto cleanup_failure;
++
++        for (i = 0; extensions[i]; i++) {
++            if (strcmp(extensions[i]->name, coreName) == 0 &&
++                extensions[i]->version >= coreVersion)
++                *coreExt = (void *) extensions[i];
++            if (strcmp(extensions[i]->name, renderName) == 0 &&
++                extensions[i]->version >= renderVersion)
++                *renderExt = (void *) extensions[i];
++        }
++
++        if (*coreExt == NULL || *renderExt == NULL)
++            goto cleanup_failure;
++        return (void *) 1;
++    }
++
+     /* Search in LIBGL_DRIVERS_PATH if we're not setuid. */
+     if (!PrivsElevated())
+         path = getenv("LIBGL_DRIVERS_PATH");
+@@ -387,7 +397,7 @@ glxProbeDriver(const char *driverName,
+     return driver;
+ 
+  cleanup_failure:
+-    if (driver)
++    if (driver && driver != (void *) 1)
+         dlclose(driver);
+     *coreExt = *renderExt = NULL;
+     return NULL;
+diff --git a/glx/glxdriswrast.c b/glx/glxdriswrast.c
+--- a/glx/glxdriswrast.c
++++ b/glx/glxdriswrast.c
+@@ -250,6 +250,11 @@ __glXDRIscreenCreateContext(__GLXscreen * baseScreen,
+         (*core->createNewContext) (screen->driScreen, driConfig, driShare,
+                                    context);
+ 
++    if (context->driContext == NULL) {
++        free(context);
++        return NULL;
++    }
++
+     return &context->base;
+ }
+ 
+@@ -404,7 +404,8 @@ __glXDRIscreenDestroy(__GLXscreen * baseScreen)
+ 
+     (*screen->core->destroyScreen) (screen->driScreen);
+ 
+-    dlclose(screen->driver);
++    if (screen->driver != (void *) 1)
++        dlclose(screen->driver);
+ 
+     __glXScreenDestroy(baseScreen);
+ 
+@@ -471,7 +472,7 @@ __glXDRIscreenProbe(ScreenPtr pScreen)
+     return &screen->base;
+ 
+  handle_error:
+-    if (screen->driver)
++    if (screen->driver && screen->driver != (void *) 1)
+         dlclose(screen->driver);
+ 
+     free(screen);

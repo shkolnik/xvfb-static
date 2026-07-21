@@ -38,8 +38,26 @@ See [the input architecture recommendations](docs/KEYBOARD-INPUT-ARCHITECTURE.md
 for profile selection, keystroke planning, injection, and
 verification layers.
 
-GLX is disabled because its GLVND implementation requires shared libraries
-and is incompatible with this project's fully static artifact contract.
+The standard artifacts disable GLX to minimize size and dependency surface.
+Separate **GLX llvmpipe alpha** artifacts embed Mesa llvmpipe for software-rendered,
+indirect GLX without a host GPU driver or shared library. They are larger and
+remain explicitly experimental while their compatibility receives broader
+testing.
+
+An **external Vulkan GLX alpha** prototype takes the opposite tradeoff. It
+statically incorporates Mesa Zink but deliberately opens the host's
+`libvulkan.so.1`, allowing the Vulkan loader and installed ICD to expose a real
+GPU. It contains no LLVM or llvmpipe and is expected to be substantially
+smaller than the llvmpipe artifact. This variant is host-assisted rather than
+fully static: it requires a compatible glibc host, Vulkan loader, and usable
+ICD. The intended compatibility floor is glibc 2.31, but that is not yet a
+published guarantee while the build toolchain and symbol-version gate are
+being completed.
+
+The external Vulkan prototype is not a release asset. Publication remains
+blocked until native render/readback succeeds on actual x86_64 and aarch64
+GPUs, with tests proving that no software renderer was selected. See the
+[implementation and validation plan](docs/GLX-EXTERNAL-VULKAN-PLAN.md).
 
 ## Download
 
@@ -47,10 +65,19 @@ Published GitHub Releases will contain:
 
 - `xvfb-static-linux-x86_64.tar.gz`
 - `xvfb-static-linux-aarch64.tar.gz`
+- `xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz`
+- `xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz`
 - `SHA256SUMS`
 
+`xvfb-static-glx-external-vulkan-alpha-linux-<arch>.tar.gz` is reserved for
+the host-assisted prototype and is intentionally excluded from this release
+list until its two-architecture hardware gate passes.
+
 Each archive contains `bin/Xvfb`, a machine-readable manifest, and the exact
-third-party license texts applicable to the binary.
+third-party license texts applicable to the binary. GLX manifests additionally
+declare `"variant": "glx"`, `"maturity": "alpha"`, and
+`"renderer": "llvmpipe"` so the experimental status survives renaming or
+extraction of the archive.
 
 ## Versions and releases
 
@@ -76,12 +103,14 @@ atomically pushes `main` and the tag to GitHub. In a terminal it previews the
 version and requires confirmation. Use `./release.sh --dry-run` to preview
 without changing files, commits, tags, or remote branches.
 
-Pushing a matching tag builds and smoke-tests x86_64 and aarch64 on native
-GitHub-hosted runners. If both pass and the version in each artifact matches
-the tag, the workflow publishes both archives and a combined `SHA256SUMS` file
-as an immutable GitHub Release. Both archives receive signed build-provenance
-attestations. The exact Nixpkgs revision remains recorded separately in
-`flake.lock` and the release notes.
+Pushing a matching tag builds and smoke-tests the standard and GLX llvmpipe alpha
+variants for x86_64 and aarch64 on native GitHub-hosted runners. The GLX tests
+create an indirect context with llvmpipe, render two colors, and read pixels
+back for verification. If all four artifacts match the tag and pass, the
+workflow publishes them with a combined `SHA256SUMS` file as an immutable
+GitHub Release. Every archive receives a signed build-provenance attestation.
+The exact Nixpkgs revision remains recorded separately in `flake.lock` and the
+release notes.
 
 ## Build
 
@@ -103,6 +132,23 @@ installation:
 NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 nix build .#default --impure
 ```
 
+Build and test the native GLX llvmpipe alpha artifact with:
+
+```sh
+./build-glx-llvmpipe.sh x86_64
+./test/smoke.sh out/glx-llvmpipe-alpha/x86_64/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz
+./test/glx-llvmpipe-smoke.sh out/glx-llvmpipe-alpha/x86_64/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz
+```
+
+The explicit architecture names accepted by `build-glx-llvmpipe.sh` are `x86_64` and
+`aarch64`, matching `build.sh`.
+
+The external Vulkan alpha build, when enabled in the current checkout, uses an
+equivalently explicit `build-glx-external-vulkan.sh` entry point and writes
+under `out/glx-external-vulkan-alpha/<architecture>/`. Its runtime test must
+run on a glibc distribution with `libvulkan.so.1` and an installed Vulkan ICD;
+the ordinary fully static Alpine contract does not apply to this variant.
+
 ## Verify a download
 
 ```sh
@@ -118,6 +164,10 @@ The checksum detects altered bytes. The attestation verifies that the archive
 was produced by this repository's release workflow from its tagged commit.
 `file` should report `statically linked`. The smoke test additionally boots the
 server in a clean Alpine container with no X11 packages.
+
+For a GLX llvmpipe alpha download, substitute its full filename in both checksum and
+attestation commands. Its manifest should identify the `glx` variant, `alpha`
+maturity, llvmpipe renderer, and pinned Mesa and LLVM versions.
 
 ## Why the X server is patched
 

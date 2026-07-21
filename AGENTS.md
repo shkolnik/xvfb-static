@@ -32,6 +32,9 @@ path and branding scans, and patch/build-file consistency inspection.
   the curated-profile branch built and passed its Alpine smoke and 28-profile
   Nix integration checks on native Apple-silicon aarch64 Docker. The workspace
   was not a clean checkout, so this does not close the clean-build gate above.
+- The GLX llvmpipe and external Vulkan work is alpha-stage. The external
+  Vulkan variant is a host-assisted prototype and is not release-eligible
+  until actual-GPU render/readback passes natively on both architectures.
 
 This repository must stay understandable, buildable, testable, and legally
 distributable on its own.
@@ -57,6 +60,21 @@ The archive itself is deterministic given the same declared inputs:
 - owner and group are fixed to numeric zero;
 - timestamps use a fixed `SOURCE_DATE_EPOCH` value;
 - the resulting archive receives a SHA-256 checksum.
+
+The GLX variants preserve the one-executable package shape but have distinct
+runtime contracts:
+
+- `xvfb-static-glx-llvmpipe-alpha` statically incorporates Mesa llvmpipe and
+  LLVM and remains fully static;
+- `xvfb-static-glx-external-vulkan-alpha` statically incorporates Mesa Zink
+  but opens the host's `libvulkan.so.1`. It is host-assisted, contains no LLVM
+  or software-renderer fallback, and requires a compatible glibc host, Vulkan
+  loader, and ICD.
+
+The intended external-Vulkan host floor is glibc 2.31. Do not encode or
+advertise that as a minimum until the build toolchain, `GLIBC_*` symbol audit,
+and Debian 11 runtime test prove it. Keep `alpha` synchronized across names,
+manifests, documentation, CI, and release metadata.
 
 ### Intentional capability reduction
 
@@ -124,6 +142,10 @@ architecture recommendations.
 | `flake.lock` | Exact nixpkgs revision and content hash. This transitively pins X.Org and linked dependencies. |
 | `package.nix` | Core build: static-libxcvt workaround, embedded keymap, Xvfb override, stripping, license extraction, and manifest generation. |
 | `build.sh` | Docker-only entry point and reproducible archive/checksum assembly. |
+| `mesa-llvmpipe.nix` / `package-glx-llvmpipe.nix` | Fully static Mesa llvmpipe/LLVM and GLX Xvfb alpha build. |
+| `build-glx-llvmpipe.sh` | Deterministic llvmpipe GLX alpha archive entry point. |
+| `mesa-zink.nix` / `package-glx-external-vulkan.nix` | Host-assisted external Vulkan/Zink alpha build; filenames may appear as the prototype lands. |
+| `build-glx-external-vulkan.sh` | Deterministic external Vulkan GLX alpha archive entry point. |
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
 | `nix-build-cached.sh` | In-container build wrapper: configures public cache reads and pushes new paths when authenticated. |
 | `release.sh` | Local maintainer helper that selects the next release revision, commits it when needed, creates a signed tag, and atomically pushes it to GitHub. |
@@ -131,7 +153,10 @@ architecture recommendations.
 | `patches/xserver-0002-embedded-keymap.patch` | Selects and loads a compiled XKM blob from memory, bypasses runtime rules lookup/xkbcomp, and rejects unsupported string-keymap compilation. |
 | `patches/xserver-0003-keyboard-profile-option.patch` | Adds the Xvfb-only `-keyboard PROFILE` startup selector. |
 | `test/smoke.sh` | Extracts the archive, checks its shape/static linkage, and boots Xvfb inside clean Alpine. |
+| `test/glx-llvmpipe-smoke.sh` | Verifies indirect llvmpipe GLX render/readback without host graphics libraries. |
+| `test/glx-external-vulkan-smoke.sh` | Verifies the host-assisted ABI and Zink render/readback; use a glibc environment, not Alpine. |
 | `docs/KEYBOARD-INPUT-ARCHITECTURE.md` | General recommendations for profile-aware Unicode-to-physical-key input. |
+| `docs/GLX-EXTERNAL-VULKAN-PLAN.md` | External Vulkan architecture, ABI, tests, compatibility policy, and release gates. |
 | `THIRD-PARTY-NOTICES.md` | Explains artifact licensing and pinned-source provenance. |
 | `LICENSE` / `NOTICE` | Apache-2.0 licensing for original project code and patches; not a blanket license for Xvfb. |
 | `SECURITY.md` | Supported-version and private-reporting policy. |
@@ -185,6 +210,15 @@ than re-creating the X server configuration flags. It:
 8. copies and strips only `bin/Xvfb` into the output.
 
 The keymap compiler and XKB source data are build-time inputs only.
+
+The llvmpipe GLX derivation links Mesa's Gallium swrast frontend and llvmpipe
+into Xvfb, including LLVM. The external Vulkan derivation instead links Zink
+with LLVM explicitly disabled and uses Mesa's Vulkan loader adapter to resolve
+the host loader. It must force Zink and fail loudly if the loader, ICD, or
+device is unavailable; never allow llvmpipe, softpipe, or lavapipe fallback.
+“One dynamic dependency” means one external graphics ABI. Ordinary host glibc
+runtime libraries and vendor ICD transitives must still be documented and
+audited honestly.
 
 ### Layer 3: attribution and manifest
 
@@ -343,6 +377,12 @@ still needs validation against the derivation's actual complete runtime/static
 closure during the first successful build. Treat that as a release blocker:
 the archive must not be published merely because the listed files exist.
 
+The llvmpipe GLX archive includes LLVM and its applicable notices. The external
+Vulkan archive must contain Mesa/Zink and other statically incorporated
+notices, but no LLVM notices because LLVM incorporation is forbidden. The host
+Vulkan loader, vendor ICD, and their dependencies are required at runtime but
+are not redistributed; distinguish those host licenses from archive content.
+
 Do not vendor or locally modify third-party source casually. The current model
 is: exact upstream source from pinned nixpkgs plus clearly separated local
 patches. If third-party source is vendored later, document its precise
@@ -394,6 +434,14 @@ Do not claim an architecture is “verified” when it was only cross-compiled.
 Use precise language: built, statically inspected, emulated, or executed on
 real hardware.
 
+The external Vulkan alpha may be built and uploaded as an ephemeral CI
+artifact while it is being validated, but release publication must remain
+disabled or explicitly guarded. Enable it only after native actual-GPU
+render/readback passes on x86_64 and aarch64, renderer evidence excludes all
+software devices, and each result records the GPU, kernel, Vulkan loader, ICD,
+Mesa version, and architecture. A Zink-over-lavapipe CI test is useful
+integration coverage but does not satisfy this hardware gate.
+
 ## 11. Known gaps and next recommended work
 
 In priority order:
@@ -407,9 +455,13 @@ In priority order:
    ideally on two hosts) and compare archive SHA-256 values. A persistent Nix
    cache is fine; source output state must not leak between attempts.
 4. **Verify aarch64.** Record the first successful native build and smoke test.
-5. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
+5. **Validate external Vulkan on hardware.** Prove the glibc ABI floor and
+   dependency allowlist, loud missing-loader/no-ICD failures, absence of LLVM
+   and software fallback, the expected size reduction, and native actual-GPU
+   pixel readback on both architectures before publication.
+6. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
    static closure and complement, not replace, license texts.
-6. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
+7. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
 
 ## 12. Engineering principles
 
