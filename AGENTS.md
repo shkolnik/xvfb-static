@@ -10,7 +10,7 @@ contents, tests, licensing material, or release automation.
 Linux. A release archive should run without a host dynamic linker, X11
 packages, `xkbcomp`, or an XKB data tree. The build is driven by Nix
 `pkgsStatic` inside a digest-pinned Docker image. The X.Org source and all
-dependencies are pinned through `flake.lock`. A fixed US keyboard map is
+dependencies are pinned through `flake.lock`. A curated keyboard-map catalog is
 compiled during the build and embedded into Xvfb, allowing the runtime package
 to contain one executable plus metadata and license texts.
 
@@ -28,9 +28,10 @@ path and branding scans, and patch/build-file consistency inspection.
   Treat clean native builds and Alpine smoke tests for both architectures as
   the immediate pre-publication gate. Do not erase this caveat until you
   personally run the commands and observe them pass.
-- x86_64 and aarch64 are configured as native sibling builds. Unless newer
-  evidence is recorded here, aarch64 has not been executed on real aarch64
-  hardware.
+- x86_64 and aarch64 are configured as native sibling builds. On 2026-07-21,
+  the curated-profile branch built and passed its Alpine smoke and 28-profile
+  Nix integration checks on native Apple-silicon aarch64 Docker. The workspace
+  was not a clean checkout, so this does not close the clean-build gate above.
 
 This repository must stay understandable, buildable, testable, and legally
 distributable on its own.
@@ -59,16 +60,10 @@ The archive itself is deterministic given the same declared inputs:
 
 ### Intentional capability reduction
 
-The binary supports exactly this embedded XKB profile:
-
-- rules: `evdev`
-- model: `pc105`
-- layout: `us`
-
-Runtime keymap selection is intentionally unsupported. The artifact does not
+The binary supports exactly the embedded catalog below. It defaults to `us` and
+accepts `-keyboard PROFILE` at startup. The artifact does not
 ship `xkbcomp` or `share/X11/xkb`. Requests that would require compiling
-another keymap must fail rather than silently booting with the embedded US
-layout.
+another keymap must fail rather than silently booting with another profile.
 
 This limitation is central to the single-file runtime design. Do not broaden,
 hide, or remove it casually. If general keyboard-layout support becomes a
@@ -78,6 +73,37 @@ goal, treat that as a product-design change and compare at least:
 2. embedding several named precompiled layouts with an explicit selector;
 3. publishing separate layout-specific artifacts;
 4. abandoning the single-file promise and using a conventional Xvfb package.
+
+### Curated keyboard profiles
+
+The runtime retains a single executable and embeds these named, precompiled profiles:
+
+```text
+us          us-intl     gb          de          fr          es
+latam       it          pt          br          pl          cz
+tr          se          ru          ua          gr          il
+ara         vn          be          ch          nl          dk
+no          fi          rs          rs-latin
+```
+
+A profile is a versioned rules/model/layout/variant/options tuple, not merely
+a layout name. Most initial profiles are expected to use `evdev` and `pc105`,
+but the representation must not make those fields implicit.
+
+The catalog favors scripts XKB can produce directly or
+through dead-key sequences. Japanese, Korean, Chinese, and Indic input are
+deferred because their normal paths require an IME or other composition layer.
+
+Implementation must preserve these invariants:
+
+- selection is limited to the embedded catalog and unknown profiles fail;
+- no runtime `xkbcomp`, XKB tree, or loose XKM data is added;
+- the active profile is discoverable;
+- every profile is compiled from the pinned `xkeyboard-config` input;
+- tests cover representative base, Shift, AltGr, and dead-key sequences.
+
+See `docs/KEYBOARD-INPUT-ARCHITECTURE.md` for portable consumer-side
+architecture recommendations.
 
 ### Non-goals
 
@@ -102,8 +128,10 @@ goal, treat that as a product-design change and compare at least:
 | `nix-build-cached.sh` | In-container build wrapper: configures public cache reads and pushes new paths when authenticated. |
 | `release.sh` | Local maintainer helper that selects the next release revision, commits it when needed, creates a signed tag, and atomically pushes it to GitHub. |
 | `patches/xserver-0001-xkb-env-overrides.patch` | Makes the legacy xkbcomp path shell-free and adds explicit path overrides. Retained even though the embedded-keymap path makes it normally unreachable. |
-| `patches/xserver-0002-embedded-keymap.patch` | Loads the compiled XKM blob from memory, bypasses runtime rules lookup/xkbcomp, and rejects unsupported string-keymap compilation. |
+| `patches/xserver-0002-embedded-keymap.patch` | Selects and loads a compiled XKM blob from memory, bypasses runtime rules lookup/xkbcomp, and rejects unsupported string-keymap compilation. |
+| `patches/xserver-0003-keyboard-profile-option.patch` | Adds the Xvfb-only `-keyboard PROFILE` startup selector. |
 | `test/smoke.sh` | Extracts the archive, checks its shape/static linkage, and boots Xvfb inside clean Alpine. |
+| `docs/KEYBOARD-INPUT-ARCHITECTURE.md` | General recommendations for profile-aware Unicode-to-physical-key input. |
 | `THIRD-PARTY-NOTICES.md` | Explains artifact licensing and pinned-source provenance. |
 | `LICENSE` / `NOTICE` | Apache-2.0 licensing for original project code and patches; not a blanket license for Xvfb. |
 | `SECURITY.md` | Supported-version and private-reporting policy. |
@@ -150,10 +178,10 @@ than re-creating the X server configuration flags. It:
 1. makes `libxcvt` build as a static archive;
 2. replaces the stock `libxcvt` input with that corrected derivation;
 3. applies both local X.Org patches;
-4. generates a fixed XKB source description;
-5. compiles it once with the build-platform `xkbcomp`;
-6. converts the XKM bytes into a generated C array;
-7. compiles that array into Xvfb;
+4. generates an XKB source description for every profile;
+5. compiles them with the build-platform `xkbcomp`;
+6. converts the XKM bytes into generated C arrays and a lookup table;
+7. compiles that catalog into Xvfb;
 8. copies and strips only `bin/Xvfb` into the output.
 
 The keymap compiler and XKB source data are build-time inputs only.
@@ -246,10 +274,11 @@ Before changing a patch:
 9. Record any behavior change in `README.md` and this file.
 
 Patch 0001 precedes patch 0002 because patch 0002 was authored against a tree
-with patch 0001 already applied. Do not reorder them casually.
+with patch 0001 already applied. Patch 0003 then connects the VFB-only parser
+to the embedded loader. Do not reorder them casually.
 
 The embedded-keymap patch uses `fmemopen()`, available in musl, to feed the
-XKM parser without a filesystem temporary. It intentionally makes the fixed
+XKM parser without a filesystem temporary. It intentionally makes every profile's
 keymap requirement independent of the caller's requested mask so a partially
 parsed corrupt blob cannot be accepted on a weaker retry.
 
@@ -378,11 +407,9 @@ In priority order:
    ideally on two hosts) and compare archive SHA-256 values. A persistent Nix
    cache is fine; source output state must not leak between attempts.
 4. **Verify aarch64.** Record the first successful native build and smoke test.
-5. **Add explicit negative tests.** Pin the absence of runtime XKB files and
-   the refusal/failure behavior for unsupported keymap paths.
-6. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
+5. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
    static closure and complement, not replace, license texts.
-7. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
+6. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
 
 ## 12. Engineering principles
 

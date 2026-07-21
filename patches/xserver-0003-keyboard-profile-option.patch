@@ -1,0 +1,55 @@
+From: xvfb-static maintainers
+Subject: vfb: add the embedded -keyboard profile selector
+
+Keep profile selection in Xvfb's DDX argument parser.  The loader exposes only
+selection, current-ID, and catalog-listing functions; no general XKB interface
+or runtime compiler path is added.
+
+--- a/hw/vfb/InitOutput.c
++++ b/hw/vfb/InitOutput.c
+@@ -54,6 +54,10 @@
+ #define VFB_DEFAULT_BLACKPIXEL    0
+ #define VFB_DEFAULT_LINEBIAS      0
+ #define XWD_WINDOW_NAME_LEN      60
++
++extern Bool xvfb_static_select_keyboard_profile(const char *id);
++extern const char *xvfb_static_keyboard_profile(void);
++extern void xvfb_static_list_keyboard_profiles(void);
+-
++
+ typedef struct {
+     int width;
+@@ -229,5 +233,8 @@ ddxUseMsg(void)
+     ErrorF("-blackpixel n          pixel value for black\n");
+     ErrorF("-whitepixel n          pixel value for white\n");
++    ErrorF("-keyboard PROFILE      select embedded keyboard profile (default: us)\n");
++    ErrorF("                         supported profiles: ");
++    xvfb_static_list_keyboard_profiles();
+-
++
+ #ifdef HAVE_MMAP
+     ErrorF
+@@ -265,6 +272,23 @@ ddxProcessArgument(int argc, char *argv[], int i)
+     else
+         currentScreen = &vfbScreens[lastScreen];
+-
++
++    if (strcmp(argv[i], "-keyboard") == 0) {
++        if (i + 1 >= argc) {
++            ErrorF("xvfb-static: -keyboard requires a profile. Supported profiles: ");
++            xvfb_static_list_keyboard_profiles();
++            FatalError("Missing profile passed to -keyboard\n");
++        }
++        if (!xvfb_static_select_keyboard_profile(argv[i + 1])) {
++            ErrorF("xvfb-static: unknown keyboard profile '%s'. Supported profiles: ",
++                   argv[i + 1]);
++            xvfb_static_list_keyboard_profiles();
++            FatalError("Invalid profile passed to -keyboard\n");
++        }
++        ErrorF("xvfb-static: selected keyboard profile: %s\n",
++               xvfb_static_keyboard_profile());
++        return 2;
++    }
++
+     if (strcmp(argv[i], "-screen") == 0) {      /* -screen n WxHxD */
+         int screenNum;

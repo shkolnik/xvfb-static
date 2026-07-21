@@ -33,8 +33,10 @@ docker run --rm \
       nix --extra-experimental-features 'nix-command flakes' \\
       build '.#xvfb-static-$arch' -o /src/out/$arch/result --print-build-logs --impure
     rm -rf /src/out/$arch/package
-    mkdir -p /src/out/$arch/package
-    cp -RL /src/out/$arch/result/. /src/out/$arch/package/
+    mkdir -p /src/out/$arch/package/bin /src/out/$arch/package/share/xvfb-static/licenses
+    cp -L /src/out/$arch/result/bin/Xvfb /src/out/$arch/package/bin/
+    cp -L /src/out/$arch/result/share/xvfb-static/manifest.json /src/out/$arch/package/share/xvfb-static/
+    cp -L /src/out/$arch/result/share/xvfb-static/licenses/* /src/out/$arch/package/share/xvfb-static/licenses/
     cd /src/out/$arch/package
     LC_ALL=C tar --sort=name --owner=0 --group=0 --numeric-owner \\
       --mtime=@315532800 -czf /src/out/$arch/xvfb-static-linux-$arch.tar.gz bin share
