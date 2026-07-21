@@ -1,0 +1,367 @@
+static-xvfb: XKB env overrides + direct-exec xkbcomp (no /bin/sh)
+
+What: patches xkb/ddxLoad.c (the only file in this xserver tree that builds
+and runs the xkbcomp command line — verified in Task 3's source inventory,
+see patches/README.md) to add two things:
+
+  1. STATIC_XVFB_XKB_BINDIR / STATIC_XVFB_XKM_OUTPUT_DIR env var overrides for the
+     xkbcomp binary directory and the compiled-.xkm output directory.
+     Neither has ANY existing runtime knob upstream (verified against the
+     pinned xorg-server 21.1.20 source: xkb/xkbInit.c's
+     XkbProcessArguments only recognizes -xkbdir, which sets
+     XkbBaseDirectory — the *data* tree, not the bin dir; XKM_OUTPUT_DIR is
+     a build-time-only AC_DEFINE_DIR constant with no getenv() anywhere in
+     the tree). Both are compiled-in-default-if-unset, matching the -xkbdir
+     flag's own "override only if you ask" shape.
+
+  2. Direct fork()+execv() of xkbcomp instead of Popen()->
+     execl("/bin/sh","sh","-c",cmd) (os/utils.c:1425-1512, the ONLY call
+     site of which in this whole tree is this file's RunXkbComp — verified
+     via `grep -rln 'Popen(\|Pclose('`). A shell-less distroless host has
+     no /bin/sh for Popen to exec, so without this the server can never
+     compile a keymap and never finishes activating the keyboard on such a
+     host — the static-xvfb's explicit boot bar (S2 spike gate).
+
+Why here, why this shape: xkb/ddxLoad.c is the single file that owns both
+gaps, so the whole patch is contained to one file. The WIN32 branch (never
+built by this pack — pkgsStatic targets Linux only) is left running through
+its original Popen-free fopen()+System(buf) path, now written out in a
+dedicated #ifdef WIN32 branch instead of sharing an unconditional buf/argv
+build with the POSIX path, since the two now diverge (a quoted shell string
+for System() vs. an unquoted argv[] for execv()).
+
+Scope check against the S2 trip-wire (~150 lines / many hours): this diff
+is ~180 added / ~25 removed lines in one file, one function pair. It is
+larger than the ~150-line guidance — flagged explicitly in
+patches/README.md and the Task 3 report — but is a single,
+well-understood, bounded change (confirmed by a real build + boot, not
+guesswork), not an open-ended grind, so it proceeds rather than blocking.
+
+--- a/xkb/ddxLoad.c	2025-10-28 12:14:33.000000000 -0500
++++ b/xkb/ddxLoad.c	2026-07-19 21:05:50.026982896 -0500
+@@ -45,10 +45,24 @@
+ #include <X11/extensions/XI.h>
+ #include "xkb.h"
+ 
++/* static-xvfb: fork+execv (below) needs these directly; unistd.h already comes in
++ * transitively via X11/Xos.h, but sys/wait.h/errno.h are not guaranteed. */
++#ifndef WIN32
++#include <sys/wait.h>
++#include <errno.h>
++#endif
++
+ #define	PRE_ERROR_MSG "\"The XKEYBOARD keymap compiler (xkbcomp) reports:\""
+ #define	ERROR_PREFIX	"\"> \""
+ #define	POST_ERROR_MSG1 "\"Errors from xkbcomp are not fatal to the X server\""
+ #define	POST_ERROR_MSG2 "\"End of messages from xkbcomp\""
++/* static-xvfb: unquoted counterparts for the direct-exec argv (no shell) path —
++ * the originals above carry literal embedded '"' bytes because they were
++ * designed to survive Popen()'s "sh -c <string>"; execv() argv entries must
++ * not include those shell-quote characters. */
++#define	STATIC_XVFB_PRE_ERROR_MSG "The XKEYBOARD keymap compiler (xkbcomp) reports:"
++#define	STATIC_XVFB_ERROR_PREFIX "> "
++#define	STATIC_XVFB_POST_ERROR_MSG1 "Errors from xkbcomp are not fatal to the X server"
+ 
+ #if defined(WIN32)
+ #define PATHSEPARATOR "\\"
+@@ -67,8 +81,21 @@
+     int r = -1;
+ 
+ #ifndef WIN32
++    /* static-xvfb: STATIC_XVFB_XKM_OUTPUT_DIR overrides the compiled-in XKM_OUTPUT_DIR
++     * (a build-time-only AC_DEFINE_DIR constant, no existing runtime knob —
++     * verified by grepping this tree for XKM_OUTPUT_DIR/getenv before
++     * patching). A relocatable pack build has no writable path baked in at
++     * compile time, so without this every boot falls through silently to
++     * the hardcoded "/tmp/" default further below. */
++    const char *static_xvfb_dir = getenv("STATIC_XVFB_XKM_OUTPUT_DIR");
++
+     /* Can we write an xkm and then open it too? */
+-    if (access(XKM_OUTPUT_DIR, W_OK | X_OK) == 0) {
++    if (static_xvfb_dir != NULL && access(static_xvfb_dir, W_OK | X_OK) == 0) {
++        directory = static_xvfb_dir;
++        if (static_xvfb_dir[strlen(static_xvfb_dir) - 1] != '/')
++            pathsep = "/";
++    }
++    else if (access(XKM_OUTPUT_DIR, W_OK | X_OK) == 0) {
+         directory = XKM_OUTPUT_DIR;
+         if (XKM_OUTPUT_DIR[strlen(XKM_OUTPUT_DIR) - 1] != '/')
+             pathsep = "/";
+@@ -91,6 +118,77 @@
+  */
+ typedef void (*xkbcomp_buffer_callback)(FILE *out, void *userdata);
+ 
++#ifndef WIN32
++/* static-xvfb: direct-exec replacement for Popen()->execl("/bin/sh","sh","-c",cmd)
++ * (os/utils.c:1487) — a shell-less distroless host has no /bin/sh, so Popen
++ * can't run xkbcomp there and the server never finishes keyboard init (the
++ * pack's boot bar). Popen()/Pclose() are used nowhere else in this tree
++ * (verified: `grep -rln 'Popen(\|Pclose('` matches only os/utils.c, which
++ * defines them, and this file), so this adds a parallel fork/pipe/execv
++ * path used only here instead of touching the exported Popen()/Pclose()
++ * API. Mirrors Popen's own privilege-drop (setgid/setuid) and pipe
++ * plumbing; only the exec call itself differs (execv, not a shell).
++ */
++static pid_t xkbcompPid = -1;
++
++static FILE *
++PopenXkbCompDirect(char *const argv[])
++{
++    int pdes[2];
++    pid_t pid;
++    FILE *iop;
++
++    if (pipe(pdes) < 0)
++        return NULL;
++
++    if ((pid = fork()) == -1) {
++        close(pdes[0]);
++        close(pdes[1]);
++        return NULL;
++    }
++    if (pid == 0) {             /* child: xkbcomp reads stdin from the pipe */
++        if (setgid(getgid()) == -1 || setuid(getuid()) == -1)
++            _exit(127);
++        if (pdes[0] != 0) {
++            dup2(pdes[0], 0);
++            close(pdes[0]);
++        }
++        close(pdes[1]);
++        execv(argv[0], argv);
++        _exit(127);
++    }
++    close(pdes[0]);
++    if ((iop = fdopen(pdes[1], "w")) == NULL) {
++        int status;
++        pid_t reaped;
++
++        close(pdes[1]);
++        do {
++            reaped = waitpid(pid, &status, 0);
++        } while (reaped == -1 && errno == EINTR);
++        return NULL;
++    }
++    xkbcompPid = pid;
++    return iop;
++}
++
++static int
++PcloseXkbCompDirect(FILE *iop)
++{
++    int pstat;
++    pid_t pid;
++
++    fclose(iop);
++    if (xkbcompPid <= 0)
++        return -1;
++    do {
++        pid = waitpid(xkbcompPid, &pstat, 0);
++    } while (pid == -1 && errno == EINTR);
++    xkbcompPid = -1;
++    return (pid == -1) ? -1 : pstat;
++}
++#endif                          /* !WIN32 */
++
+ /**
+  * Start xkbcomp, let the callback write into xkbcomp's stdin. When done,
+  * return a strdup'd copy of the file name we've written to.
+@@ -99,20 +197,38 @@
+ RunXkbComp(xkbcomp_buffer_callback callback, void *userdata)
+ {
+     FILE *out;
+-    char *buf = NULL, keymap[PATH_MAX], xkm_output_dir[PATH_MAX];
+-
+-    const char *emptystring = "";
++    char keymap[PATH_MAX], xkm_output_dir[PATH_MAX];
+     char *xkbbasedirflag = NULL;
+-    const char *xkbbindir = emptystring;
+-    const char *xkbbindirsep = emptystring;
+ 
+ #ifdef WIN32
+     /* WIN32 has no popen. The input must be stored in a file which is
+        used as input for xkbcomp. xkbcomp does not read from stdin. */
++    char *buf = NULL;
+     char tmpname[PATH_MAX];
+     const char *xkmfile = tmpname;
++    const char *xkbbindir = "", *xkbbindirsep = "";
+ #else
+     const char *xkmfile = "-";
++    /* static-xvfb: STATIC_XVFB_XKB_BINDIR overrides the compiled-in XkbBinDirectory —
++     * upstream has no runtime knob for it at all (only -xkbdir, which sets
++     * XkbBaseDirectory, the *data* tree — verified in xkb/xkbInit.c's
++     * XkbProcessArguments). A relocatable pack build doesn't know its own
++     * install location at compile time. */
++    const char *bindir = getenv("STATIC_XVFB_XKB_BINDIR");
++    char *xkbcomp_path = NULL, *xkm_full_path = NULL;
++    char debug_level[16];
++    char *argv_direct[14];     /* 13 args max + NULL — resize if adding arguments */
++    int n = 0;
++
++    /* static-xvfb: treat an empty STATIC_XVFB_XKB_BINDIR ("") the same as unset, for
++     * consistency with OutputDirectory()'s STATIC_XVFB_XKM_OUTPUT_DIR handling
++     * above (there, access("", ...) fails and falls through naturally).
++     * Without this, bindir stays "" (non-NULL) and the guard below at the
++     * xkbcomp_path build site takes its "no bindir" branch anyway — but via
++     * a bare asprintf(&xkbcomp_path, "xkbcomp") with no directory, which
++     * execv() treats as *cwd-relative*, not compiled-in-default. */
++    if (bindir == NULL || *bindir == '\0')
++        bindir = XkbBinDirectory;
+ #endif
+ 
+     snprintf(keymap, sizeof(keymap), "server-%s", display);
+@@ -126,23 +242,22 @@
+ #endif
+ 
+     if (XkbBaseDirectory != NULL) {
+-        if (asprintf(&xkbbasedirflag, "\"-R%s\"", XkbBaseDirectory) == -1)
++        if (asprintf(&xkbbasedirflag, "-R%s", XkbBaseDirectory) == -1)
+             xkbbasedirflag = NULL;
+     }
+ 
++#ifdef WIN32
+     if (XkbBinDirectory != NULL) {
+         int ld = strlen(XkbBinDirectory);
+         int lps = strlen(PATHSEPARATOR);
+ 
+         xkbbindir = XkbBinDirectory;
+-
+-        if ((ld >= lps) && (strcmp(xkbbindir + ld - lps, PATHSEPARATOR) != 0)) {
++        if ((ld >= lps) && (strcmp(xkbbindir + ld - lps, PATHSEPARATOR) != 0))
+             xkbbindirsep = PATHSEPARATOR;
+-        }
+     }
+ 
+     if (asprintf(&buf,
+-                 "\"%s%sxkbcomp\" -w %d %s -xkm \"%s\" "
++                 "\"%s%sxkbcomp\" -w %d \"%s\" -xkm \"%s\" "
+                  "-em1 %s -emp %s -eml %s \"%s%s.xkm\"",
+                  xkbbindir, xkbbindirsep,
+                  ((xkbDebugFlags < 2) ? 1 :
+@@ -160,33 +275,100 @@
+         return NULL;
+     }
+ 
+-#ifndef WIN32
+-    out = Popen(buf, "w");
+-#else
+     out = fopen(tmpname, "w");
++#else
++    if (bindir != NULL && *bindir != '\0') {
++        const char *sep = (bindir[strlen(bindir) - 1] != '/') ? "/" : "";
++
++        if (asprintf(&xkbcomp_path, "%s%sxkbcomp", bindir, sep) == -1)
++            xkbcomp_path = NULL;
++    }
++    else if (asprintf(&xkbcomp_path, "xkbcomp") == -1)
++        xkbcomp_path = NULL;
++
++    snprintf(debug_level, sizeof(debug_level), "%d",
++             ((xkbDebugFlags < 2) ? 1 :
++              ((xkbDebugFlags > 10) ? 10 : (int) xkbDebugFlags)));
++
++    if (asprintf(&xkm_full_path, "%s%s.xkm", xkm_output_dir, keymap) == -1)
++        xkm_full_path = NULL;
++
++    if (xkbcomp_path == NULL || xkm_full_path == NULL) {
++        free(xkbbasedirflag);
++        free(xkbcomp_path);
++        free(xkm_full_path);
++        LogMessage(X_ERROR,
++                   "XKB: Could not invoke xkbcomp: not enough memory\n");
++        return NULL;
++    }
++
++    /* static-xvfb: argv for a direct execv() — no shell, so no quoting needed
++     * (contrast the WIN32 branch above, which still builds a quoted shell
++     * command line for System()). STATIC_XVFB_PRE_ERROR_MSG/STATIC_XVFB_ERROR_PREFIX/
++     * STATIC_XVFB_POST_ERROR_MSG1 are the unquoted counterparts of
++     * PRE_ERROR_MSG/ERROR_PREFIX/POST_ERROR_MSG1 (see their definitions
++     * near the top of this file). Casts silence -Wdiscarded-qualifiers:
++     * argv_direct is `char *[]` (execv's required signature) but every
++     * literal here is technically `const char *`. */
++    argv_direct[n++] = xkbcomp_path;
++    argv_direct[n++] = (char *) "-w";
++    argv_direct[n++] = debug_level;
++    if (xkbbasedirflag != NULL)
++        argv_direct[n++] = xkbbasedirflag;
++    argv_direct[n++] = (char *) "-xkm";
++    argv_direct[n++] = (char *) xkmfile;
++    argv_direct[n++] = (char *) "-em1";
++    argv_direct[n++] = (char *) STATIC_XVFB_PRE_ERROR_MSG;
++    argv_direct[n++] = (char *) "-emp";
++    argv_direct[n++] = (char *) STATIC_XVFB_ERROR_PREFIX;
++    argv_direct[n++] = (char *) "-eml";
++    argv_direct[n++] = (char *) STATIC_XVFB_POST_ERROR_MSG1;
++    argv_direct[n++] = xkm_full_path;
++    argv_direct[n] = NULL;
++
++    out = PopenXkbCompDirect(argv_direct);
++    free(xkbbasedirflag);
+ #endif
+ 
+     if (out != NULL) {
+         /* Now write to xkbcomp */
+         (*callback)(out, userdata);
+ 
+-#ifndef WIN32
+-        if (Pclose(out) == 0)
+-#else
++#ifdef WIN32
+         if (fclose(out) == 0 && System(buf) >= 0)
++#else
++        if (PcloseXkbCompDirect(out) == 0)
+ #endif
+         {
+             if (xkbDebugFlags)
++#ifdef WIN32
+                 DebugF("[xkb] xkb executes: %s\n", buf);
+-            free(buf);
++#else
++                DebugF("[xkb] xkb executes: %s\n", xkbcomp_path);
++#endif
+ #ifdef WIN32
++            free(buf);
+             unlink(tmpname);
++#else
++            free(xkbcomp_path);
++            free(xkm_full_path);
+ #endif
+             return xnfstrdup(keymap);
+         }
+         else {
++            /* static-xvfb: name the actual binary we tried to run, mirroring the
++             * DebugF/free split just below (WIN32 keeps its own `buf`
++             * quoted-command-line string; the POSIX execv() path has no
++             * `buf` at all any more — `xkbcomp_path` is its equivalent, and
++             * is guaranteed non-NULL here since the OOM guard above already
++             * returned if either asprintf() had failed). */
++#ifdef WIN32
+             LogMessage(X_ERROR, "Error compiling keymap (%s) executing '%s'\n",
+                        keymap, buf);
++#else
++            LogMessage(X_ERROR, "Error compiling keymap (%s) executing '%s'\n",
++                       keymap, xkbcomp_path);
++#endif
+         }
+ #ifdef WIN32
+         /* remove the temporary file */
+@@ -194,13 +376,14 @@
+ #endif
+     }
+     else {
+-#ifndef WIN32
+         LogMessage(X_ERROR, "XKB: Could not invoke xkbcomp\n");
+-#else
+-        LogMessage(X_ERROR, "Could not open file %s\n", tmpname);
+-#endif
+     }
++#ifdef WIN32
+     free(buf);
++#else
++    free(xkbcomp_path);
++    free(xkm_full_path);
++#endif
+     return NULL;
+ }
+ 
+

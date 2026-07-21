@@ -1,0 +1,8 @@
+static-xvfb
+Copyright 2026 James Shkolnik
+
+The project build files and original patches are licensed under Apache-2.0.
+The resulting Xvfb executable incorporates third-party software under its own
+licenses. Every release archive includes those license texts under
+share/static-xvfb/licenses/. See THIRD-PARTY-NOTICES.md for source provenance.
+
