@@ -45,7 +45,7 @@ let
       } > xkb/xvfb_static_keymap_blob.h
     '';
   });
-  releaseRevision = 1;
+  releaseRevision = 2;
   releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
   nativeBuildInputs = [ gnutar gzip jq stdenv.cc.bintools ];
   strip = "${stdenv.cc.targetPrefix}strip";
