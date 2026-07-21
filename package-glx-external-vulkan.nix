@@ -186,7 +186,19 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
       cp "$src/$rel" "$dest"
     else
       matches="$(tar -tf "$src" | while IFS= read -r member; do
-        case "$member" in "$rel"|*/"$rel") printf '%s\n' "$member" ;; esac
+        # Treat rel as relative to the source root. Release archives commonly
+        # wrap that root in one directory, but nested files with the same
+        # basename (notably GCC's several COPYING3 files) are not equivalent.
+        case "$member" in
+          "$rel") printf '%s\n' "$member" ;;
+          */"$rel")
+            prefix="''${member%/"$rel"}"
+            case "$prefix" in
+              */*) ;;
+              *) printf '%s\n' "$member" ;;
+            esac
+            ;;
+        esac
       done)"
       match_count="$(printf '%s\n' "$matches" | awk 'NF { count++ } END { print count + 0 }')"
       test "$match_count" -eq 1 || {

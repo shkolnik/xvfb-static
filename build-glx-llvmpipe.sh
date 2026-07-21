@@ -35,8 +35,18 @@ docker run --rm \
       build 'path:/src#xvfb-static-glx-llvmpipe-alpha-$arch' \\
       -o /src/out/glx-llvmpipe-alpha/$arch/result --print-build-logs --impure
     rm -rf /src/out/glx-llvmpipe-alpha/$arch/package
-    mkdir -p /src/out/glx-llvmpipe-alpha/$arch/package
-    cp -RL /src/out/glx-llvmpipe-alpha/$arch/result/. /src/out/glx-llvmpipe-alpha/$arch/package/
+    mkdir -p \
+      /src/out/glx-llvmpipe-alpha/$arch/package/bin \
+      /src/out/glx-llvmpipe-alpha/$arch/package/share/xvfb-static/licenses
+    install -m 0755 \
+      /src/out/glx-llvmpipe-alpha/$arch/result/bin/Xvfb \
+      /src/out/glx-llvmpipe-alpha/$arch/package/bin/Xvfb
+    install -m 0644 \
+      /src/out/glx-llvmpipe-alpha/$arch/result/share/xvfb-static/manifest.json \
+      /src/out/glx-llvmpipe-alpha/$arch/package/share/xvfb-static/manifest.json
+    install -m 0644 \
+      /src/out/glx-llvmpipe-alpha/$arch/result/share/xvfb-static/licenses/* \
+      /src/out/glx-llvmpipe-alpha/$arch/package/share/xvfb-static/licenses/
     cd /src/out/glx-llvmpipe-alpha/$arch/package
     LC_ALL=C tar --sort=name --owner=0 --group=0 --numeric-owner \\
       --mtime=@315532800 \\
