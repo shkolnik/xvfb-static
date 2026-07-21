@@ -1,0 +1,42 @@
+From: xvfb-static maintainers
+Subject: diagnostics: identify project-owned Xserver and XKB messages
+
+Give every runtime diagnostic introduced by xvfb-static a stable component
+prefix. Keep the prefix at each call site instead of wrapping ErrorF():
+upstream legitimately constructs some messages through several ErrorF() calls,
+so a central wrapper would insert prefixes in the middle of a logical line.
+
+This patch covers only diagnostics owned by this project. It does not claim
+to relabel every upstream Xserver message or output written directly by a
+statically linked library. Future GLX integrations should use the same form,
+for example [xvfb-static:mesa] and [xvfb-static:zink], at their integration
+boundaries.
+
+--- a/xkb/ddxLoad.c
++++ b/xkb/ddxLoad.c
+@@ -730 +730 @@ XkbCompileKeymapForDevice(DeviceIntPtr dev, XkbRMLVNamesPtr rmlvo,
+-        ErrorF("xvfb-static: fmemopen of embedded keymap failed\n");
++        ErrorF("[xvfb-static:xkb] fmemopen of embedded keymap failed\n");
+@@ -738 +738 @@ XkbCompileKeymapForDevice(DeviceIntPtr dev, XkbRMLVNamesPtr rmlvo,
+-        ErrorF("xvfb-static: embedded keyboard profile '%s' failed to load\n",
++        ErrorF("[xvfb-static:xkb] embedded keyboard profile '%s' failed to load\n",
+@@ -745 +745 @@ XkbCompileKeymapForDevice(DeviceIntPtr dev, XkbRMLVNamesPtr rmlvo,
+-        ErrorF("xvfb-static: embedded keymap is missing required components "
++        ErrorF("[xvfb-static:xkb] embedded keymap is missing required components "
+@@ -818 +818 @@ XkbCompileKeymapFromString(DeviceIntPtr dev,
+-    ErrorF("xvfb-static: the X server's -keymap option is not supported by this "
++    ErrorF("[xvfb-static:xkb] the X server's -keymap option is not supported by this "
+@@ -820 +820 @@ XkbCompileKeymapFromString(DeviceIntPtr dev,
+-    ErrorF("xvfb-static: arbitrary keymaps are unsupported; use -keyboard with "
++    ErrorF("[xvfb-static:xkb] arbitrary keymaps are unsupported; use -keyboard with "
+--- a/hw/vfb/InitOutput.c
++++ b/hw/vfb/InitOutput.c
+@@ -286 +286 @@ ddxProcessArgument(int argc, char *argv[], int i)
+-            ErrorF("xvfb-static: -keyboard requires a profile. Supported profiles: ");
++            ErrorF("[xvfb-static:xserver] -keyboard requires a profile. Supported profiles: ");
+@@ -291 +291 @@ ddxProcessArgument(int argc, char *argv[], int i)
+-            ErrorF("xvfb-static: unknown keyboard profile '%s'. Supported profiles: ",
++            ErrorF("[xvfb-static:xserver] unknown keyboard profile '%s'. Supported profiles: ",
+@@ -296 +296 @@ ddxProcessArgument(int argc, char *argv[], int i)
+-        ErrorF("xvfb-static: selected keyboard profile: %s\n",
++        ErrorF("[xvfb-static:xserver] selected keyboard profile: %s\n",

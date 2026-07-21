@@ -155,6 +155,23 @@ a different layout.
 No upstream source is vendored. Patches are applied to the exact X.Org source
 pinned transitively by `flake.lock`.
 
+## Diagnostics
+
+Xvfb does not create a log file. Its diagnostics remain on standard error
+(with command output on standard output), so supervisors should capture those
+streams. Runtime messages introduced by this project carry a stable component
+prefix, for example:
+
+```text
+[xvfb-static:xserver] selected keyboard profile: ru
+[xvfb-static:xkb] embedded keyboard profile 'ru' failed to load
+```
+
+The prefix identifies project-owned integration code; it does not rewrite
+messages emitted by upstream Xserver code or intercept direct writes from
+third-party libraries. Future statically linked GLX components should add
+their own prefixes, such as `mesa` and `zink`, at their logging boundaries.
+
 ## Security and updates
 
 Static linking moves dependency-update responsibility from the host package
