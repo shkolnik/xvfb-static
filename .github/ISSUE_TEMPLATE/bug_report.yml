@@ -1,0 +1,23 @@
+name: Bug report
+description: Report a build or runtime problem
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Release or commit
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options: [x86_64, aarch64]
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include commands, output, and the host operating system.
+    validations:
+      required: true
