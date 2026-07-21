@@ -15,6 +15,7 @@ tmp="$(mktemp -d /tmp/static-xvfb-smoke.XXXXXX)"
 name="static-xvfb-smoke-$$"
 cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
+  chmod -R u+w "$tmp" 2>/dev/null || true
   rm -rf "$tmp"
 }
 trap cleanup EXIT
