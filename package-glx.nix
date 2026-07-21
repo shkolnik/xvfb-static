@@ -50,6 +50,9 @@ static.xvfb.overrideAttrs (old: {
     /src/patches/xserver-0003-linked-swrast.patch
   ];
   postPatch = (old.postPatch or "") + ''
+    substituteInPlace hw/vfb/meson.build \
+      --replace-fail 'dependencies: common_dep,' \
+      "dependencies: common_dep, link_args: '-Wl,--gc-sections',"
     {
       echo 'static const unsigned char xvfb_static_keymap_xkm[] = {'
       od -An -v -tu1 ${keymapBlob} | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/'
