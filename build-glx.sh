@@ -32,11 +32,21 @@ docker run --rm \
     git config --global --add safe.directory /src
     /src/nix-build-cached.sh \\
       nix --extra-experimental-features 'nix-command flakes' \\
-      build '.#xvfb-static-glx-alpha-$arch' \\
+      build 'path:/src#xvfb-static-glx-alpha-$arch' \\
       -o /src/out/glx-alpha/$arch/result --print-build-logs --impure
     rm -rf /src/out/glx-alpha/$arch/package
-    mkdir -p /src/out/glx-alpha/$arch/package
-    cp -RL /src/out/glx-alpha/$arch/result/. /src/out/glx-alpha/$arch/package/
+    mkdir -p \
+      /src/out/glx-alpha/$arch/package/bin \
+      /src/out/glx-alpha/$arch/package/share/xvfb-static/licenses
+    install -m 0755 \
+      /src/out/glx-alpha/$arch/result/bin/Xvfb \
+      /src/out/glx-alpha/$arch/package/bin/Xvfb
+    install -m 0644 \
+      /src/out/glx-alpha/$arch/result/share/xvfb-static/manifest.json \
+      /src/out/glx-alpha/$arch/package/share/xvfb-static/manifest.json
+    install -m 0644 \
+      /src/out/glx-alpha/$arch/result/share/xvfb-static/licenses/* \
+      /src/out/glx-alpha/$arch/package/share/xvfb-static/licenses/
     cd /src/out/glx-alpha/$arch/package
     LC_ALL=C tar --sort=name --owner=0 --group=0 --numeric-owner \\
       --mtime=@315532800 \\
