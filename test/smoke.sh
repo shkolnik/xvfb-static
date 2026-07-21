@@ -51,13 +51,18 @@ docker run --name "$name" --rm -v "$tmp":/package:ro alpine:3.20 sh -eu -c '
   boot 94
   test ! -s /tmp/xvfb-94.log
   boot 95 -keyboard ru
-  grep -q "selected keyboard profile: ru" /tmp/xvfb-95.log
+  grep -q "^\[xvfb-static:xserver\] selected keyboard profile: ru$" /tmp/xvfb-95.log
   boot 96 -keyboard us-intl
-  grep -q "selected keyboard profile: us-intl" /tmp/xvfb-96.log
+  grep -q "^\[xvfb-static:xserver\] selected keyboard profile: us-intl$" /tmp/xvfb-96.log
   if /package/bin/Xvfb :97 -keyboard unsupported >/tmp/invalid.log 2>&1; then
     echo "invalid keyboard profile unexpectedly booted" >&2
     exit 1
   fi
-  grep -q "unknown keyboard profile.*unsupported" /tmp/invalid.log
+  grep -q "^\[xvfb-static:xserver\] unknown keyboard profile.*unsupported" /tmp/invalid.log
+  if /package/bin/Xvfb :98 -keyboard >/tmp/missing.log 2>&1; then
+    echo "missing keyboard profile unexpectedly booted" >&2
+    exit 1
+  fi
+  grep -q "^\[xvfb-static:xserver\] -keyboard requires a profile" /tmp/missing.log
 '
 echo "xvfb-static smoke test passed"

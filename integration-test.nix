@@ -70,6 +70,6 @@ in runCommand "xvfb-static-keyboard-profiles" {
   grep -q 'default: us' help.log
   grep -q 'us-intl.*rs-latin' help.log
   ! ${corruptXvfb}/bin/Xvfb :202 -keyboard de >corrupt.log 2>&1
-  grep -q "embedded keyboard profile 'de' failed to load" corrupt.log
+  grep -q "^\[xvfb-static:xkb\] embedded keyboard profile 'de' failed to load$" corrupt.log
   touch $out
 ''
