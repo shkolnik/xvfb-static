@@ -1,4 +1,4 @@
-{ xorg, runCommand, xkeyboard_config, stdenv, gnutar, gzip, jq, pixman, zlib, libmd }:
+{ xorg, xvfb, runCommand, xkeyboard_config, stdenv, gnutar, gzip, jq, pixman, zlib, libmd }:
 let
   libxcvtStatic = xorg.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
@@ -26,7 +26,7 @@ let
     xkbcomp -I${xkeyboard_config}/share/X11/xkb -xkm ${keymapSource} $out
     test -s $out
   '';
-  xvfb = xorg.xvfb.overrideAttrs (old: {
+  xvfbPatched = xvfb.overrideAttrs (old: {
     pname = "static-xvfb";
     buildInputs = prepareXvfbDependencies (old.buildInputs or [ ]);
     propagatedBuildInputs = prepareXvfbDependencies (old.propagatedBuildInputs or [ ]);
@@ -44,19 +44,19 @@ let
     '';
   });
   releaseRevision = 1;
-  releaseVersion = "${xvfb.version}-r${toString releaseRevision}";
+  releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
   nativeBuildInputs = [ gnutar gzip jq stdenv.cc.bintools ];
   strip = "${stdenv.cc.targetPrefix}strip";
 in runCommand "static-xvfb-${releaseVersion}" {
   inherit nativeBuildInputs;
   passthru = {
     inherit releaseRevision releaseVersion;
-    upstreamVersion = xvfb.version;
+    upstreamVersion = xvfbPatched.version;
   };
 } ''
   set -euo pipefail
   mkdir -p $out/bin $out/share/static-xvfb/licenses
-  cp ${xvfb}/bin/Xvfb $out/bin/Xvfb
+  cp ${xvfbPatched}/bin/Xvfb $out/bin/Xvfb
   chmod u+w $out/bin/Xvfb
   ${strip} --strip-all $out/bin/Xvfb
   extract_license() {
@@ -85,7 +85,7 @@ in runCommand "static-xvfb-${releaseVersion}" {
   files=$(cd $out && find . -type f | cut -c3- | { cat; echo share/static-xvfb/manifest.json; } | LC_ALL=C sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
   jq -n --arg arch "${stdenv.hostPlatform.parsed.cpu.name}" \
     --arg version "${releaseVersion}" --argjson revision ${toString releaseRevision} \
-    --arg xorg_version "${xvfb.version}" --argjson files "$files" \
+    --arg xorg_version "${xvfbPatched.version}" --argjson files "$files" \
     '{name:"static-xvfb",version:$version,revision:$revision,schema_version:1,arch:$arch,components:{"xorg-server":$xorg_version},files:$files}' \
     > $out/share/static-xvfb/manifest.json
 ''
