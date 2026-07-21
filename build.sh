@@ -20,6 +20,7 @@ docker run --rm \
   -v static-xvfb-nix:/nix \
   "$image" sh -c "
     set -eu
+    git config --global --add safe.directory /src
     nix --extra-experimental-features 'nix-command flakes' \\
       build '.#static-xvfb-$arch' -o /src/out/$arch/result --print-build-logs --impure
     rm -rf /src/out/$arch/package
