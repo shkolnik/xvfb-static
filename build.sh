@@ -24,20 +24,20 @@ docker run --rm \
   -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
   -e BUILD_UID="$uid" -e BUILD_GID="$gid" \
   -v "$root":/src -w /src \
-  -v static-xvfb-nix:/nix \
+  -v xvfb-static-nix:/nix \
   "$image" sh -c "
     set -eu
     git config --global --add safe.directory /src
     nix --extra-experimental-features 'nix-command flakes' \\
-      build '.#static-xvfb-$arch' -o /src/out/$arch/result --print-build-logs --impure
+      build '.#xvfb-static-$arch' -o /src/out/$arch/result --print-build-logs --impure
     rm -rf /src/out/$arch/package
     mkdir -p /src/out/$arch/package
     cp -RL /src/out/$arch/result/. /src/out/$arch/package/
     cd /src/out/$arch/package
     LC_ALL=C tar --sort=name --owner=0 --group=0 --numeric-owner \\
-      --mtime=@315532800 -czf /src/out/$arch/static-xvfb-linux-$arch.tar.gz bin share
+      --mtime=@315532800 -czf /src/out/$arch/xvfb-static-linux-$arch.tar.gz bin share
     cd /src/out/$arch
-    sha256sum static-xvfb-linux-$arch.tar.gz > SHA256SUMS
+    sha256sum xvfb-static-linux-$arch.tar.gz > SHA256SUMS
     chown -R \"\$BUILD_UID:\$BUILD_GID\" /src/out/$arch
   "
 

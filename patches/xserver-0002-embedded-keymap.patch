@@ -1,8 +1,8 @@
-static-xvfb: load a compiled-in keymap (no rules file, no xkbcomp)
+xvfb-static: load a compiled-in keymap (no rules file, no xkbcomp)
 
 What: patches xkb/ddxLoad.c (the same single file xserver-0001 already
 patches) so XkbCompileKeymapForDevice() returns a keymap read straight out
-of a `static const unsigned char static_xvfb_keymap_xkm[]` array compiled into the
+of a `static const unsigned char xvfb_static_keymap_xkm[]` array compiled into the
 binary, instead of building one from the filesystem.
 
 Upstream's path was two filesystem-bound steps:
@@ -63,7 +63,7 @@ second shape produced a non-NULL, half-loaded XkbDescPtr and the server booted
 on it. That shape is newly reachable precisely because of this patch: upstream's
 retry recompiled the default RMLVO from the data tree and normally succeeded,
 whereas ours re-reads the same bad blob. The fix is to test against a FIXED
-local requirement (`static_xvfb_need`) rather than the caller's `need`, and to pass
+local requirement (`xvfb_static_need`) rather than the caller's `need`, and to pass
 that same fixed mask to XkmReadFile() -- making this function's verdict wholly
 independent of what the caller asked for, which is the honest description of a
 server that ships exactly one keymap. See the function comment for the mask set
@@ -127,7 +127,7 @@ whose only caller was the body replaced here -- same -Wunused-function
 reasoning as XkbRMLVOtoKcCGST() above. RunXkbComp() itself survives and still
 compiles: XkbDDXLoadKeymapByNames() calls it and is an exported entry point
 (include/xkbsrv.h). But it now has no in-tree caller on any reachable path,
-which makes xserver-0001's STATIC_XVFB_XKB_BINDIR / STATIC_XVFB_XKM_OUTPUT_DIR overrides and
+which makes xserver-0001's XVFB_STATIC_XKB_BINDIR / XVFB_STATIC_XKM_OUTPUT_DIR overrides and
 its shell-less direct-exec machinery effectively dead weight for this pack.
 0001 is deliberately left in place regardless -- whether to retire it is a
 separate call, not a side effect of this one.
@@ -135,7 +135,7 @@ separate call, not a side effect of this one.
 Diagnostics use ErrorF(), not LogMessage() -- found by running, not reading.
 The first cut of this patch used LogMessage(X_ERROR, ...) as the task brief
 sketched. Corrupting the blob then produced a correctly FATAL server, but the
-"static-xvfb: embedded keymap failed to load" line never appeared: LogMessage() logs
+"xvfb-static: embedded keymap failed to load" line never appeared: LogMessage() logs
 at verbosity 1, while logVerbosity defaults to 0 (os/log.c) and Xvfb has no
 log file, so the message was silently dropped. A fail-loud diagnostic nobody
 can see is not fail-loud. ErrorF() routes to LogVWrite(-1, ...) and always
@@ -161,14 +161,14 @@ patch --dry-run against a pristine extract of the pinned tarball).
  #include <X11/extensions/XI.h>
  #include "xkb.h"
  
-+/* static-xvfb: the precompiled keymap, materialized into this source tree as a
-+ * `static const unsigned char static_xvfb_keymap_xkm[]` by the `xvfb` derivation's
++/* xvfb-static: the precompiled keymap, materialized into this source tree as a
++ * `static const unsigned char xvfb_static_keymap_xkm[]` by the `xvfb` derivation's
 + * postPatch (package.nix) from the standalone `keymapBlob`
 + * derivation. It is generated, not committed -- so a stale or missing blob is
 + * a build failure here, not a runtime surprise. */
-+#include "static_xvfb_keymap_blob.h"
++#include "xvfb_static_keymap_blob.h"
 +
- /* static-xvfb: fork+execv (below) needs these directly; unistd.h already comes in
+ /* xvfb-static: fork+execv (below) needs these directly; unistd.h already comes in
   * transitively via X11/Xos.h, but sys/wait.h/errno.h are not guaranteed. */
  #ifndef WIN32
 @@ -436,45 +443,16 @@
@@ -214,7 +214,7 @@ patch --dry-run against a pristine extract of the pinned tarball).
 -
 -    return have;
 -}
-+/* static-xvfb: upstream's xkb_write_keymap_string_cb() and XkbDDXLoadKeymapFromString()
++/* xvfb-static: upstream's xkb_write_keymap_string_cb() and XkbDDXLoadKeymapFromString()
 + * lived here. Both were statics reachable only from XkbCompileKeymapFromString()
 + * (the server's -keymap option), whose body is replaced below with an outright
 + * rejection -- so leaving them would be two unreferenced statics
@@ -244,7 +244,7 @@ patch --dry-run against a pristine extract of the pinned tarball).
 -
 -    return XkbDDXNamesFromRules(dev, rmlvo->rules, &mlvo, kccgst);
 -}
-+/* static-xvfb: upstream's XkbRMLVOtoKcCGST() lived here. It existed only to feed
++/* xvfb-static: upstream's XkbRMLVOtoKcCGST() lived here. It existed only to feed
 + * XkbCompileKeymapForDevice() below, which no longer consults the rules file
 + * (see the comment on that function), so it is removed rather than left as an
 + * unreferenced static (-Wunused-function). XkbDDXNamesFromRules(), its only
@@ -254,7 +254,7 @@ patch --dry-run against a pristine extract of the pinned tarball).
 - * Compile the given RMLVO keymap and return it. Returns the XkbDescPtr on
 - * success or NULL on failure. If the components compiled are not a superset
 - * or equal to need, the compilation is treated as failure.
-+ * static-xvfb: return the compiled-in keymap, bypassing BOTH the rules lookup and
++ * xvfb-static: return the compiled-in keymap, bypassing BOTH the rules lookup and
 + * xkbcomp.
 + *
 + * Upstream compiled an RMLVO keymap here in two filesystem-bound steps:
@@ -293,17 +293,17 @@ patch --dry-run against a pristine extract of the pinned tarball).
 + * That is newly reachable under this patch: upstream's retry recompiled the
 + * default RMLVO from the data tree and normally succeeded, whereas ours
 + * re-reads the same bad blob. A browser that types on the user's behalf must
-+ * never run on a subtly wrong keyboard, so we check `static_xvfb_need` instead and
++ * never run on a subtly wrong keyboard, so we check `xvfb_static_need` instead and
 + * pass it to XkmReadFile() as well -- this function's accept/reject decision
 + * is now completely independent of what the caller asked for, which is the
 + * honest description of a server that ships exactly one keymap.
 + *
-+ * static_xvfb_need is upstream's own "components we really really need" set from
++ * xvfb_static_need is upstream's own "components we really really need" set from
 + * XkbCompileKeymap() (ddxLoad.c) -- symbols, compat map, types, key names,
 + * virtual mods -- i.e. exactly what the FIRST (non-retry) call already passes
 + * in `need`, so nothing is loosened. Our canonical keymap's TOC declares all
 + * seven sections (present == 0x7f: the five above plus indicators and
-+ * geometry), so static_xvfb_need is a strict subset of what the blob defines; the two
++ * geometry), so xvfb_static_need is a strict subset of what the blob defines; the two
 + * extras are deliberately not required, matching upstream's judgement that a
 + * keymap without them is still usable.
 + *
@@ -344,11 +344,11 @@ patch --dry-run against a pristine extract of the pinned tarball).
 -                xkb = NULL;
 -            }
 -        }
-+    /* static-xvfb: what THIS pack's one keymap must always deliver -- upstream's own
++    /* xvfb-static: what THIS pack's one keymap must always deliver -- upstream's own
 +     * "components we really really need" set from XkbCompileKeymap(). Checked
 +     * instead of the caller's `need` because KeymapOrDefaults() retries with
 +     * need == 0, against which any mask test is vacuously true. See above. */
-+    const unsigned static_xvfb_need = XkmSymbolsMask | XkmCompatMapMask |
++    const unsigned xvfb_static_need = XkmSymbolsMask | XkmCompatMapMask |
 +        XkmTypesMask | XkmKeyNamesMask | XkmVirtualModsMask;
 +    unsigned int missing, provided;
 +    FILE *file;
@@ -357,24 +357,24 @@ patch --dry-run against a pristine extract of the pinned tarball).
 +    (void) rmlvo;
 +    (void) need;
 +
-+    file = fmemopen((void *) static_xvfb_keymap_xkm, sizeof(static_xvfb_keymap_xkm), "rb");
++    file = fmemopen((void *) xvfb_static_keymap_xkm, sizeof(xvfb_static_keymap_xkm), "rb");
 +    if (file == NULL) {
-+        ErrorF("static-xvfb: fmemopen of embedded keymap failed\n");
++        ErrorF("xvfb-static: fmemopen of embedded keymap failed\n");
 +        return NULL;
 +    }
 +
-+    missing = XkmReadFile(file, static_xvfb_need, XkmAllIndicesMask, &xkb);
++    missing = XkmReadFile(file, xvfb_static_need, XkmAllIndicesMask, &xkb);
 +    fclose(file);
 +
 +    if (xkb == NULL) {
-+        ErrorF("static-xvfb: embedded keymap failed to load\n");
++        ErrorF("xvfb-static: embedded keymap failed to load\n");
 +        return NULL;
 +    }
 +
-+    provided = (static_xvfb_need | XkmAllIndicesMask) & (~missing);
-+    if ((static_xvfb_need & provided) != static_xvfb_need) {
-+        ErrorF("static-xvfb: embedded keymap is missing required components "
-+               "(need 0x%x, provided 0x%x)\n", static_xvfb_need, provided);
++    provided = (xvfb_static_need | XkmAllIndicesMask) & (~missing);
++    if ((xvfb_static_need & provided) != xvfb_static_need) {
++        ErrorF("xvfb-static: embedded keymap is missing required components "
++               "(need 0x%x, provided 0x%x)\n", xvfb_static_need, provided);
 +        XkbFreeKeyboard(xkb, 0, TRUE);
 +        return NULL;
      }
@@ -388,7 +388,7 @@ patch --dry-run against a pristine extract of the pinned tarball).
  }
  
 +/**
-+ * static-xvfb: reject the server's -keymap option outright.
++ * xvfb-static: reject the server's -keymap option outright.
 + *
 + * This is the ONE remaining entry point that reached xkbcomp: upstream compiled
 + * the caller-supplied keymap string by piping it to xkbcomp
@@ -412,7 +412,7 @@ patch --dry-run against a pristine extract of the pinned tarball).
 + * verbosity 1 while logVerbosity defaults to 0 and Xvfb has no log file, so its
 + * output is silently dropped at this point in startup (found by running).
 + *
-+ * static-xvfb never passes -keymap; this exists so that if anyone ever does, they get an
++ * xvfb-static never passes -keymap; this exists so that if anyone ever does, they get an
 + * accurate answer instead of a mystery.
 + */
  XkbDescPtr
@@ -446,12 +446,11 @@ patch --dry-run against a pristine extract of the pinned tarball).
 +    (void) keymap;
 +    (void) keymap_length;
 +
-+    ErrorF("static-xvfb: the X server's -keymap option is not supported by this "
++    ErrorF("xvfb-static: the X server's -keymap option is not supported by this "
 +           "display pack.\n");
-+    ErrorF("static-xvfb: this pack ships exactly ONE keymap (rules=evdev, model=pc105, "
++    ErrorF("xvfb-static: this pack ships exactly ONE keymap (rules=evdev, model=pc105, "
 +           "layout=us), compiled into the Xvfb binary; it carries neither "
 +           "xkbcomp nor an XKB data tree, so no other keymap can be "
 +           "compiled.\n");
 +    return NULL;
  }
-

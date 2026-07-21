@@ -11,12 +11,12 @@
     in {
       packages.x86_64-linux = {
         default = mk x86Host.pkgsStatic;
-        static-xvfb-x86_64 = mk x86Host.pkgsStatic;
+        xvfb-static-x86_64 = mk x86Host.pkgsStatic;
       };
 
       packages.aarch64-linux = {
         default = mk armHost.pkgsStatic;
-        static-xvfb-aarch64 = mk armHost.pkgsStatic;
+        xvfb-static-aarch64 = mk armHost.pkgsStatic;
       };
     };
 }

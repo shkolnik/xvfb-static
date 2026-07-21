@@ -31,15 +31,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: ./build.sh "${{ matrix.arch }}"
-      - run: ./test/smoke.sh "out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz"
+      - run: ./test/smoke.sh "out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz"
       - name: Attest release archive
         uses: actions/attest@v4
         with:
-          subject-path: out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz
+          subject-path: out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz
       - uses: actions/upload-artifact@v7
         with:
-          name: static-xvfb-linux-${{ matrix.arch }}
-          path: out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz
+          name: xvfb-static-linux-${{ matrix.arch }}
+          path: out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
   publish:
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          pattern: static-xvfb-linux-*
+          pattern: xvfb-static-linux-*
           path: dist
           merge-multiple: true
       - name: Validate version and assemble release
@@ -71,9 +71,9 @@ jobs:
           release_version="${tag#v}"
 
           for arch in x86_64 aarch64; do
-            archive="dist/static-xvfb-linux-$arch.tar.gz"
+            archive="dist/xvfb-static-linux-$arch.tar.gz"
             test -s "$archive"
-            manifest="$(tar -xOf "$archive" share/static-xvfb/manifest.json)"
+            manifest="$(tar -xOf "$archive" share/xvfb-static/manifest.json)"
             manifest_release="$(jq -er '.version' <<<"$manifest")"
             manifest_upstream="$(jq -er '.components["xorg-server"]' <<<"$manifest")"
             if [[ "$manifest_release" != "$release_version" ]]; then
@@ -89,13 +89,13 @@ jobs:
           (
             cd dist
             sha256sum \
-              static-xvfb-linux-x86_64.tar.gz \
-              static-xvfb-linux-aarch64.tar.gz > SHA256SUMS
+              xvfb-static-linux-x86_64.tar.gz \
+              xvfb-static-linux-aarch64.tar.gz > SHA256SUMS
           )
 
           nixpkgs_revision="$(jq -er '.nodes.nixpkgs.locked.rev' flake.lock)"
           {
-            printf 'static-xvfb %s packages X.Org Server %s.\n\n' "$tag" "$upstream_version"
+            printf 'xvfb-static %s packages X.Org Server %s.\n\n' "$tag" "$upstream_version"
             printf -- '- x86_64: built and boot-tested on a native GitHub-hosted runner\n'
             printf -- '- aarch64: built and boot-tested on a native GitHub-hosted runner\n'
             printf -- '- both archives have GitHub build-provenance attestations\n'
@@ -108,9 +108,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/static-xvfb-linux-x86_64.tar.gz \
-            dist/static-xvfb-linux-aarch64.tar.gz \
+            dist/xvfb-static-linux-x86_64.tar.gz \
+            dist/xvfb-static-linux-aarch64.tar.gz \
             dist/SHA256SUMS \
             --verify-tag \
-            --title "static-xvfb $GITHUB_REF_NAME" \
+            --title "xvfb-static $GITHUB_REF_NAME" \
             --notes-file release-notes.md

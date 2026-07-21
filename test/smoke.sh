@@ -8,11 +8,11 @@ if [[ -z "$archive" ]]; then
     aarch64|arm64) arch="aarch64" ;;
     *) echo "unsupported host architecture: $(uname -m)" >&2; exit 2 ;;
   esac
-  archive="$root/out/$arch/static-xvfb-linux-$arch.tar.gz"
+  archive="$root/out/$arch/xvfb-static-linux-$arch.tar.gz"
 fi
 test -s "$archive" || { echo "missing archive: $archive" >&2; exit 1; }
-tmp="$(mktemp -d /tmp/static-xvfb-smoke.XXXXXX)"
-name="static-xvfb-smoke-$$"
+tmp="$(mktemp -d /tmp/xvfb-static-smoke.XXXXXX)"
+name="xvfb-static-smoke-$$"
 cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
   chmod -R u+w "$tmp" 2>/dev/null || true
@@ -21,8 +21,8 @@ cleanup() {
 trap cleanup EXIT
 tar -xzf "$archive" -C "$tmp"
 test -x "$tmp/bin/Xvfb"
-test -s "$tmp/share/static-xvfb/manifest.json"
-test -d "$tmp/share/static-xvfb/licenses"
+test -s "$tmp/share/xvfb-static/manifest.json"
+test -d "$tmp/share/xvfb-static/licenses"
 test "$(find "$tmp/bin" -maxdepth 1 -type f | wc -l)" -eq 1
 file "$tmp/bin/Xvfb" | grep -q 'statically linked'
 docker run --name "$name" --rm -v "$tmp":/package:ro alpine:3.20 sh -eu -c '
@@ -34,4 +34,4 @@ docker run --name "$name" --rm -v "$tmp":/package:ro alpine:3.20 sh -eu -c '
   kill "$pid"
   wait "$pid" || true
 '
-echo "static-xvfb smoke test passed"
+echo "xvfb-static smoke test passed"

@@ -1,4 +1,4 @@
-# AGENTS.md — static-xvfb project guide
+# AGENTS.md — xvfb-static project guide
 
 This file is the cold-start guide for humans and coding agents working on this
 repository. Read it completely before changing build inputs, patches, artifact
@@ -6,7 +6,7 @@ contents, tests, licensing material, or release automation.
 
 ## 1. Project in one paragraph
 
-`static-xvfb` builds reproducible, fully statically linked Xvfb executables for
+`xvfb-static` builds reproducible, fully statically linked Xvfb executables for
 Linux. A release archive should run without a host dynamic linker, X11
 packages, `xkbcomp`, or an XKB data tree. The build is driven by Nix
 `pkgsStatic` inside a digest-pinned Docker image. The X.Org source and all
@@ -42,10 +42,10 @@ distributable on its own.
 A release archive contains:
 
 - `bin/Xvfb` — a stripped, fully static Linux executable;
-- `share/static-xvfb/manifest.json` — architecture, component version,
-  static-xvfb release version and revision, schema version, and an exact file
+- `share/xvfb-static/manifest.json` — architecture, component version,
+  xvfb-static release version and revision, schema version, and an exact file
   inventory;
-- `share/static-xvfb/licenses/` — third-party license texts extracted from
+- `share/xvfb-static/licenses/` — third-party license texts extracted from
   the exact pinned sources used by the build.
 
 The archive itself is deterministic given the same declared inputs:
@@ -118,7 +118,7 @@ goal, treat that as a product-design change and compare at least:
 `build.sh` starts a digest-pinned `nixos/nix` container and mounts:
 
 - the repository at `/src`;
-- a named Docker volume, `static-xvfb-nix`, at `/nix` for build-cache
+- a named Docker volume, `xvfb-static-nix`, at `/nix` for build-cache
   reuse.
 
 The host needs only Docker. Files created as root in the container are handed
@@ -133,7 +133,7 @@ the static toolchain.
 
 ### Layer 2: static Xvfb derivation
 
-`package.nix` starts with nixpkgs' Xvfb-only X.Org server variant rather
+`package.nix` starts with nixpkgs' top-level Xvfb-only X.Org server variant rather
 than re-creating the X server configuration flags. It:
 
 1. makes `libxcvt` build as a static archive;
@@ -159,7 +159,7 @@ the manifest and the smoke test should be updated together.
 ### Layer 4: deterministic release archive
 
 `build.sh` dereferences the Nix result, creates
-`static-xvfb-linux-<arch>.tar.gz`, and writes `SHA256SUMS`. Local
+`xvfb-static-linux-<arch>.tar.gz`, and writes `SHA256SUMS`. Local
 outputs live under `out/<arch>/` and are ignored by Git.
 
 ## 6. Normal development workflow
@@ -174,10 +174,10 @@ From a clean checkout:
 Then inspect rather than trusting a green exit status alone:
 
 ```sh
-tar -tzf out/x86_64/static-xvfb-linux-x86_64.tar.gz
+tar -tzf out/x86_64/xvfb-static-linux-x86_64.tar.gz
 file out/x86_64/package/bin/Xvfb
-jq . out/x86_64/package/share/static-xvfb/manifest.json
-find out/x86_64/package/share/static-xvfb/licenses -type f -maxdepth 1 -print
+jq . out/x86_64/package/share/xvfb-static/manifest.json
+find out/x86_64/package/share/xvfb-static/licenses -type f -maxdepth 1 -print
 sha256sum --check out/x86_64/SHA256SUMS
 ```
 
@@ -196,7 +196,7 @@ attempted directly:
 
 ```sh
 NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
-  nix build .#static-xvfb-x86_64 --impure
+  nix build .#xvfb-static-x86_64 --impure
 ```
 
 That path does not exercise the pinned Docker environment or archive assembly,
@@ -317,7 +317,7 @@ CI builds and smoke-tests x86_64 and aarch64 on matching native runners, then
 uploads ephemeral workflow artifacts. Tags matching
 `v<upstream-xorg-version>-r<positive-revision>` trigger the release workflow.
 The upstream portion must match the X.Org Server version in both artifact
-manifests, and the full tag must match the manifest's static-xvfb version. The
+manifests, and the full tag must match the manifest's xvfb-static version. The
 project revision is maintained as `releaseRevision` in `package.nix`, starts at
 `r1`, increments whenever new bytes are released for the same upstream
 version, and resets to `r1` when upstream changes.
@@ -444,21 +444,21 @@ rg -n 'legacy-product-name|/workspace|/home/' . --glob '!AGENTS.md'
 
 # Inspect output
 file out/x86_64/package/bin/Xvfb
-tar -tvzf out/x86_64/static-xvfb-linux-x86_64.tar.gz
-jq . out/x86_64/package/share/static-xvfb/manifest.json
+tar -tvzf out/x86_64/xvfb-static-linux-x86_64.tar.gz
+jq . out/x86_64/package/share/xvfb-static/manifest.json
 
 # Check for dynamic linkage (both should indicate no dynamic dependency)
 ldd out/x86_64/package/bin/Xvfb || true
 readelf -l out/x86_64/package/bin/Xvfb | rg 'interpreter' || true
 
 # Check embedded diagnostics/keymap guard strings
-grep -a 'static-xvfb:' out/x86_64/package/bin/Xvfb
+grep -a 'xvfb-static:' out/x86_64/package/bin/Xvfb
 
 # Compare two independently saved builds
-sha256sum build-a/static-xvfb-linux-x86_64.tar.gz
-sha256sum build-b/static-xvfb-linux-x86_64.tar.gz
-cmp build-a/static-xvfb-linux-x86_64.tar.gz \
-    build-b/static-xvfb-linux-x86_64.tar.gz
+sha256sum build-a/xvfb-static-linux-x86_64.tar.gz
+sha256sum build-b/xvfb-static-linux-x86_64.tar.gz
+cmp build-a/xvfb-static-linux-x86_64.tar.gz \
+    build-b/xvfb-static-linux-x86_64.tar.gz
 ```
 
 ## 15. Definition of done

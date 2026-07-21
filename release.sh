@@ -62,12 +62,12 @@ upstream_version="$(
   docker run --rm \
     -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
     -v "$root":/src -w /src \
-    -v static-xvfb-nix:/nix \
+    -v xvfb-static-nix:/nix \
     "$image" sh -c "
       set -eu
       git config --global --add safe.directory /src
       nix --extra-experimental-features 'nix-command flakes' \\
-        eval '.#static-xvfb-$arch.upstreamVersion' --raw --impure
+        eval '.#xvfb-static-$arch.upstreamVersion' --raw --impure
     "
 )"
 if [[ ! "$upstream_version" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
@@ -146,12 +146,12 @@ evaluated_version="$(
   docker run --rm \
     -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
     -v "$root":/src -w /src \
-    -v static-xvfb-nix:/nix \
+    -v xvfb-static-nix:/nix \
     "$image" sh -c "
       set -eu
       git config --global --add safe.directory /src
       nix --extra-experimental-features 'nix-command flakes' \\
-        eval '.#static-xvfb-$arch.releaseVersion' --raw --impure
+        eval '.#xvfb-static-$arch.releaseVersion' --raw --impure
     "
 )"
 if [[ "$evaluated_version" != "$release_version" ]]; then
@@ -174,7 +174,7 @@ if git show-ref --verify --quiet "refs/tags/$release_tag"; then
   fi
   echo "Reusing local tag $release_tag at HEAD."
 else
-  git tag -s "$release_tag" -m "static-xvfb $release_tag"
+  git tag -s "$release_tag" -m "xvfb-static $release_tag"
 fi
 
 echo "Pushing $branch and $release_tag atomically to $remote..."

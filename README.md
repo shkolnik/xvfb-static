@@ -1,4 +1,4 @@
-# static-xvfb
+# xvfb-static
 
 Reproducible, fully static Xvfb binaries for Linux. The release artifact has
 no dynamic linker dependency and needs no host X11 packages or XKB data tree.
@@ -19,8 +19,8 @@ and is incompatible with this project's fully static artifact contract.
 
 Published GitHub Releases will contain:
 
-- `static-xvfb-linux-x86_64.tar.gz`
-- `static-xvfb-linux-aarch64.tar.gz`
+- `xvfb-static-linux-x86_64.tar.gz`
+- `xvfb-static-linux-aarch64.tar.gz`
 - `SHA256SUMS`
 
 Each archive contains `bin/Xvfb`, a machine-readable manifest, and the exact
@@ -81,9 +81,9 @@ NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 nix build .#default --impure
 
 ```sh
 sha256sum --check SHA256SUMS
-gh attestation verify static-xvfb-linux-x86_64.tar.gz \
+gh attestation verify xvfb-static-linux-x86_64.tar.gz \
   --repo shkolnik/xvfb-static
-tar -xzf static-xvfb-linux-x86_64.tar.gz
+tar -xzf xvfb-static-linux-x86_64.tar.gz
 file bin/Xvfb
 bin/Xvfb -version
 ```

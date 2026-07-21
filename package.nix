@@ -1,6 +1,8 @@
-{ xorg, xvfb, runCommand, xkeyboard_config, stdenv, gnutar, gzip, jq, pixman, zlib, libmd }:
+{ xvfb, runCommand, xkeyboard_config, stdenv, gnutar, gzip, jq, pixman, zlib, libmd
+, xkbcomp, libxcvt, xorg-server, libx11, libxext, libxfont_2
+}:
 let
-  libxcvtStatic = xorg.libxcvt.overrideAttrs (old: {
+  libxcvtStatic = libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
       substituteInPlace lib/meson.build --replace-fail 'shared_library(' 'library('
@@ -11,7 +13,7 @@ let
       (map (dependency:
         if (dependency.pname or "") == "libxcvt" then libxcvtStatic else dependency
       ) dependencies);
-  keymapSource = builtins.toFile "static-xvfb-keymap.xkb" ''
+  keymapSource = builtins.toFile "xvfb-static-keymap.xkb" ''
     xkb_keymap "default" {
       xkb_keycodes { include "evdev+aliases(qwerty)" };
       xkb_types { include "complete" };
@@ -20,14 +22,14 @@ let
       xkb_geometry { include "pc(pc105)" };
     };
   '';
-  keymapBlob = runCommand "static-xvfb-keymap.xkm" {
-    nativeBuildInputs = [ xorg.xkbcomp ];
+  keymapBlob = runCommand "xvfb-static-keymap.xkm" {
+    nativeBuildInputs = [ xkbcomp ];
   } ''
     xkbcomp -I${xkeyboard_config}/share/X11/xkb -xkm ${keymapSource} $out
     test -s $out
   '';
   xvfbPatched = xvfb.overrideAttrs (old: {
-    pname = "static-xvfb";
+    pname = "xvfb-static";
     buildInputs = prepareXvfbDependencies (old.buildInputs or [ ]);
     propagatedBuildInputs = prepareXvfbDependencies (old.propagatedBuildInputs or [ ]);
     mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dglx=false" ];
@@ -37,17 +39,17 @@ let
     ];
     postPatch = (old.postPatch or "") + ''
       {
-        echo 'static const unsigned char static_xvfb_keymap_xkm[] = {'
+        echo 'static const unsigned char xvfb_static_keymap_xkm[] = {'
         od -An -v -tu1 ${keymapBlob} | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/'
         echo '};'
-      } > xkb/static_xvfb_keymap_blob.h
+      } > xkb/xvfb_static_keymap_blob.h
     '';
   });
   releaseRevision = 1;
   releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
   nativeBuildInputs = [ gnutar gzip jq stdenv.cc.bintools ];
   strip = "${stdenv.cc.targetPrefix}strip";
-in runCommand "static-xvfb-${releaseVersion}" {
+in runCommand "xvfb-static-${releaseVersion}" {
   inherit nativeBuildInputs;
   passthru = {
     inherit releaseRevision releaseVersion;
@@ -55,7 +57,7 @@ in runCommand "static-xvfb-${releaseVersion}" {
   };
 } ''
   set -euo pipefail
-  mkdir -p $out/bin $out/share/static-xvfb/licenses
+  mkdir -p $out/bin $out/share/xvfb-static/licenses
   cp ${xvfbPatched}/bin/Xvfb $out/bin/Xvfb
   chmod u+w $out/bin/Xvfb
   ${strip} --strip-all $out/bin/Xvfb
@@ -71,21 +73,21 @@ in runCommand "static-xvfb-${releaseVersion}" {
       test -s "$dest"
     fi
   }
-  L=$out/share/static-xvfb/licenses
-  extract_license ${xorg.xorgserver.src} COPYING $L/xorg-server.COPYING
-  extract_license ${xorg.xkbcomp.src} COPYING $L/xkbcomp.COPYING
+  L=$out/share/xvfb-static/licenses
+  extract_license ${xorg-server.src} COPYING $L/xorg-server.COPYING
+  extract_license ${xkbcomp.src} COPYING $L/xkbcomp.COPYING
   extract_license ${xkeyboard_config.src} COPYING $L/xkeyboard-config.COPYING
-  extract_license ${xorg.libX11.src} COPYING $L/libX11.COPYING
-  extract_license ${xorg.libXext.src} COPYING $L/libXext.COPYING
-  extract_license ${xorg.libXfont2.src} COPYING $L/libXfont2.COPYING
-  extract_license ${xorg.libxcvt.src} COPYING $L/libxcvt.COPYING
+  extract_license ${libx11.src} COPYING $L/libX11.COPYING
+  extract_license ${libxext.src} COPYING $L/libXext.COPYING
+  extract_license ${libxfont_2.src} COPYING $L/libXfont2.COPYING
+  extract_license ${libxcvt.src} COPYING $L/libxcvt.COPYING
   extract_license ${pixman.src} COPYING $L/pixman.COPYING
   extract_license ${zlib.src} LICENSE $L/zlib.COPYING
   extract_license ${libmd.src} COPYING $L/libmd.COPYING
-  files=$(cd $out && find . -type f | cut -c3- | { cat; echo share/static-xvfb/manifest.json; } | LC_ALL=C sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
+  files=$(cd $out && find . -type f | cut -c3- | { cat; echo share/xvfb-static/manifest.json; } | LC_ALL=C sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
   jq -n --arg arch "${stdenv.hostPlatform.parsed.cpu.name}" \
     --arg version "${releaseVersion}" --argjson revision ${toString releaseRevision} \
     --arg xorg_version "${xvfbPatched.version}" --argjson files "$files" \
-    '{name:"static-xvfb",version:$version,revision:$revision,schema_version:1,arch:$arch,components:{"xorg-server":$xorg_version},files:$files}' \
-    > $out/share/static-xvfb/manifest.json
+    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:1,arch:$arch,components:{"xorg-server":$xorg_version},files:$files}' \
+    > $out/share/xvfb-static/manifest.json
 ''

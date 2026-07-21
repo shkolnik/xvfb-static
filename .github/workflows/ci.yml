@@ -21,11 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: ./build.sh "${{ matrix.arch }}"
-      - run: ./test/smoke.sh "out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz"
+      - run: ./test/smoke.sh "out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz"
       - uses: actions/upload-artifact@v7
         with:
-          name: static-xvfb-linux-${{ matrix.arch }}
+          name: xvfb-static-linux-${{ matrix.arch }}
           path: |
-            out/${{ matrix.arch }}/static-xvfb-linux-${{ matrix.arch }}.tar.gz
+            out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz
             out/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
