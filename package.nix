@@ -45,6 +45,7 @@ let
       ./patches/xserver-0001-xkb-env-overrides.patch
       ./patches/xserver-0002-embedded-keymap.patch
       ./patches/xserver-0003-keyboard-profile-option.patch
+      ./patches/xserver-0004-component-log-prefixes.patch
     ];
     postPatch = (old.postPatch or "") + ''
       header=xkb/xvfb_static_keymap_blob.h

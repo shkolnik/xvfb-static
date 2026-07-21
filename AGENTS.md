@@ -130,6 +130,7 @@ architecture recommendations.
 | `patches/xserver-0001-xkb-env-overrides.patch` | Makes the legacy xkbcomp path shell-free and adds explicit path overrides. Retained even though the embedded-keymap path makes it normally unreachable. |
 | `patches/xserver-0002-embedded-keymap.patch` | Selects and loads a compiled XKM blob from memory, bypasses runtime rules lookup/xkbcomp, and rejects unsupported string-keymap compilation. |
 | `patches/xserver-0003-keyboard-profile-option.patch` | Adds the Xvfb-only `-keyboard PROFILE` startup selector. |
+| `patches/xserver-0004-component-log-prefixes.patch` | Adds stable component labels to project-owned Xserver and XKB diagnostics. |
 | `test/smoke.sh` | Extracts the archive, checks its shape/static linkage, and boots Xvfb inside clean Alpine. |
 | `docs/KEYBOARD-INPUT-ARCHITECTURE.md` | General recommendations for profile-aware Unicode-to-physical-key input. |
 | `THIRD-PARTY-NOTICES.md` | Explains artifact licensing and pinned-source provenance. |
@@ -275,7 +276,17 @@ Before changing a patch:
 
 Patch 0001 precedes patch 0002 because patch 0002 was authored against a tree
 with patch 0001 already applied. Patch 0003 then connects the VFB-only parser
-to the embedded loader. Do not reorder them casually.
+to the embedded loader. Patch 0004 labels the diagnostics introduced by the
+preceding patches and must remain last. Do not reorder them casually.
+
+Project-owned runtime diagnostics use complete-line prefixes of the form
+`[xvfb-static:COMPONENT]`. Add labels at component call sites, not by wrapping
+`ErrorF()`: upstream sometimes assembles one logical line through multiple
+calls. Current stable components are `xserver` for the VFB integration and
+`xkb` for the embedded-keymap loader. A future GLX build should label its Mesa
+and Zink integration paths independently. This convention does not promise to
+intercept or relabel upstream messages or arbitrary direct writes from linked
+third-party code.
 
 The embedded-keymap patch uses `fmemopen()`, available in musl, to feed the
 XKM parser without a filesystem temporary. It intentionally makes every profile's
