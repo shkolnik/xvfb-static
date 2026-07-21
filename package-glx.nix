@@ -56,4 +56,8 @@ static.xvfb.overrideAttrs (old: {
       echo '};'
     } > xkb/xvfb_static_keymap_blob.h
   '';
+  postInstall = (old.postInstall or "") + ''
+    chmod u+w $out/bin/Xvfb
+    ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
+  '';
 })
