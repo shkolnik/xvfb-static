@@ -99,8 +99,16 @@ static.runCommand "xvfb-static-glx-alpha-${releaseVersion}" {
       test -s "$src/$rel"
       cp "$src/$rel" "$dest"
     else
-      matches="$(tar -tf "$src" --wildcards "*/$rel")"
-      test "$(printf '%s\n' "$matches" | grep -c .)" -eq 1
+      matches="$(tar -tf "$src" | while IFS= read -r member; do
+        case "$member" in
+          "$rel"|*/"$rel") printf '%s\n' "$member" ;;
+        esac
+      done)"
+      match_count="$(printf '%s\n' "$matches" | awk 'NF { count++ } END { print count + 0 }')"
+      if [ "$match_count" -ne 1 ]; then
+        echo "xvfb-static: expected exactly one $rel in $src, found $match_count" >&2
+        exit 1
+      fi
       tar -xf "$src" -O "$matches" > "$dest"
       test -s "$dest"
     fi
