@@ -54,6 +54,9 @@ mesa.overrideAttrs (old: {
   preConfigure = (old.preConfigure or "") + ''
     substituteInPlace src/gallium/targets/dri/meson.build \
       --replace-fail 'libgallium_dri = shared_library(' 'libgallium_dri = library('
+    substituteInPlace src/meson.build \
+      --replace-fail "    subdir('gallium/targets/dril')" \
+      "    message('Skipping unused dynamic dril loader')"
     substituteInPlace src/glx/meson.build \
       --replace-fail 'libgl = shared_library(' 'libgl = library('
   '';
