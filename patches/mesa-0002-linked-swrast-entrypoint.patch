@@ -1,3 +1,18 @@
+mesa: expose the software DRI driver as an in-process entrypoint
+
+Why: static Xvfb cannot `dlopen()` Mesa's conventional `swrast_dri.so`.
+Newer Mesa also routes the legacy X-server target through dril, whose stubs
+cannot create the indirect GLX contexts this artifact needs.
+
+What: export `__driDriverGetExtensions_swrast()` from Mesa's Gallium DRI
+target, assembling the extension records Xorg expects and forwarding them to
+Mesa's internal DRI frontend.  This keeps llvmpipe inside the executable.
+
+Maintenance: this bridges public DRI layouts to version-sensitive internal
+callbacks. Review their signatures after Mesa updates. This is the provider
+half of `xserver-0003-linked-swrast.patch`; keep the pair compatible and rerun
+the packaged llvmpipe render/readback test after either changes.
+
 diff --git a/src/gallium/targets/dri/dri_target.c b/src/gallium/targets/dri/dri_target.c
 --- a/src/gallium/targets/dri/dri_target.c
 +++ b/src/gallium/targets/dri/dri_target.c

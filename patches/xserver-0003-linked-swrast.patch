@@ -1,3 +1,18 @@
+xserver: use the statically linked Mesa swrast driver for indirect GLX
+
+Why: upstream Xorg loads `swrast_dri.so` with `dlopen()` and later closes its
+handle. That cannot work in one static executable with no Mesa driver files.
+
+What: obtain `swrast` extensions from the linked Mesa entrypoint. A non-null
+sentinel preserves Xorg's handle flow without calling `dlclose()` on an
+in-process symbol; other drivers retain the upstream path. Failed Mesa context
+allocation is also rejected rather than returning a partial context.
+
+Maintenance: every cleanup path receiving the sentinel must avoid `dlclose()`;
+recheck them after Xorg updates. This is the consumer half of the Mesa patch.
+Validate the pair by booting the packaged binary and running the indirect
+llvmpipe pixel-readback test, not merely by linking it.
+
 diff --git a/glx/glxdricommon.c b/glx/glxdricommon.c
 --- a/glx/glxdricommon.c
 +++ b/glx/glxdricommon.c
