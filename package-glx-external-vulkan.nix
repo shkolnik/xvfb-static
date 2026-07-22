@@ -20,6 +20,12 @@ let
             (flag: flag != "--enable-static" && flag != "--disable-shared")
             (old.configureFlags or [ ]);
         });
+        cmake = previous.cmake.overrideAttrs (old: {
+          dontAddStaticConfigureFlags = true;
+          configureFlags = builtins.filter
+            (flag: flag != "--enable-static" && flag != "--disable-shared")
+            (old.configureFlags or [ ]);
+        });
         libdrm = previous.libdrm.override {
           withIntel = false;
           withValgrind = false;
