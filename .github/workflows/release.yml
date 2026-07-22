@@ -82,7 +82,7 @@ jobs:
               /src/nix-build-cached.sh nix \
                 --extra-experimental-features "nix-command flakes" build \
                 --impure --file /src/test/glx-render.nix \
-                --out-link /tmp/result-glx-render-test --print-build-logs
+                --out-link /tmp/result-glx-render-test --option log-lines 200
               test -x /tmp/result-glx-render-test/bin/glx-render-test
               rm -rf /src/result-glx-render-test
               mkdir -p /src/result-glx-render-test/bin

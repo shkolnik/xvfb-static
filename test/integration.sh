@@ -21,7 +21,7 @@ docker run --rm \
     git config --global --add safe.directory /src
     /src/nix-build-cached.sh nix --extra-experimental-features 'nix-command flakes' \
       build '.#checks.$(case "$arch" in x86_64) echo x86_64-linux ;; aarch64) echo aarch64-linux ;; esac).keyboard-profiles' \
-      --no-link --print-build-logs --impure
+      --no-link --option log-lines 200 --impure
   "
 
 echo "xvfb-static keyboard integration test passed ($arch)"
