@@ -38,6 +38,15 @@ let
         pixman = previous.pixman.overrideAttrs (old: {
           mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dtests=disabled" ];
         });
+        # libXfont2 unconditionally builds an uninstalled lsfontdir test
+        # utility. Its static FreeType/Brotli link is incomplete, while the
+        # library itself is incorporated into and exercised through Xvfb.
+        libxfont_2 = previous.libxfont_2.overrideAttrs (old: {
+          postPatch = (old.postPatch or "") + ''
+            substituteInPlace Makefile.am \
+              --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
+          '';
+        });
         # libffi's checks add DejaGNU/Expect and a build-platform Tcl whose
         # shared-library assumptions are incompatible with this static stdenv.
         # The final Xvfb render/readback test exercises the incorporated FFI
