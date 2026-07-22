@@ -33,7 +33,7 @@ docker run --rm \
     /src/nix-build-cached.sh \\
       nix --extra-experimental-features 'nix-command flakes' \\
       build 'path:/src#xvfb-static-glx-alpha-$arch' \\
-      -o /src/out/glx-alpha/$arch/result --print-build-logs --impure
+      -o /src/out/glx-alpha/$arch/result --option log-lines 200 --impure
     rm -rf /src/out/glx-alpha/$arch/package
     mkdir -p \
       /src/out/glx-alpha/$arch/package/bin \
