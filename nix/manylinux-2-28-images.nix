@@ -2,7 +2,7 @@
 let
   locks = builtins.fromJSON (builtins.readFile ./manylinux-2-28-images.json);
   lock = locks.${system} or (throw "manylinux_2_28: unsupported system ${system}");
-  digestPattern = "sha256:[0-9a-f]{64}";
+  digestPattern = "^sha256:[0-9a-f]{64}$";
 in
 assert lock.policy == "manylinux_2_28";
 assert lock.glibcFloor == "2.28";

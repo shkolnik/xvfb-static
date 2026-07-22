@@ -50,7 +50,8 @@ prefetch_lock() {
       in
       { nix-prefetch-docker = pkgs.nix-prefetch-docker; }
     ' nix-prefetch-docker -- \
-    --image-name "$image" --image-digest "$digest" --arch "$docker_arch" --json); then
+    --image-name "$image" --image-digest "$digest" --arch "$docker_arch" \
+    --final-image-name "$image" --final-image-tag locked --json); then
     echo "nix-prefetch-docker failed for ${image}" >&2
     return 1
   fi
