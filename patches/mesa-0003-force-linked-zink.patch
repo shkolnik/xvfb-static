@@ -12,15 +12,15 @@ compiled into this variant, so there is deliberately no software GL fallback.
 diff --git a/src/gallium/auxiliary/target-helpers/sw_helper.h b/src/gallium/auxiliary/target-helpers/sw_helper.h
 --- a/src/gallium/auxiliary/target-helpers/sw_helper.h
 +++ b/src/gallium/auxiliary/target-helpers/sw_helper.h
-@@ -154,7 +154,11 @@ sw_screen_create_vk(struct sw_winsys *winsys, const struct pipe_screen_config *c
+@@ -73,8 +73,12 @@ sw_screen_create_vk(struct sw_winsys *winsys, const struct pipe_screen_config *c
  {
-    struct pipe_screen *screen = NULL;
- 
+    UNUSED bool only_sw = debug_get_bool_option("LIBGL_ALWAYS_SOFTWARE", false);
+    const char *drivers[] = {
 +#if defined(XVFB_STATIC_EXTERNAL_VULKAN) && defined(GALLIUM_ZINK)
-+   const char *drivers[] = { "zink" };
++      "zink",
 +#else
-    const char *drivers[] = { debug_get_option("GALLIUM_DRIVER", "") };
+       (sw_vk ? "" : debug_get_option("GALLIUM_DRIVER", "")),
 +#endif
- 
-    for (unsigned i = 0; i < ARRAY_SIZE(drivers) && !screen; i++) {
-       screen = sw_screen_create_named(winsys, config, drivers[i]);
+ #if defined(GALLIUM_D3D12)
+       (sw_vk || only_sw) ? "" : "d3d12",
+ #endif

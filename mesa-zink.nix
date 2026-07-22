@@ -43,7 +43,7 @@ let
         # library itself is incorporated into and exercised through Xvfb.
         libxfont_2 = previous.libxfont_2.overrideAttrs (old: {
           postPatch = (old.postPatch or "") + ''
-            substituteInPlace Makefile.am \
+            substituteInPlace Makefile.in \
               --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
           '';
         });

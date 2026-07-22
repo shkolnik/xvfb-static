@@ -43,7 +43,7 @@ let
         # library itself is incorporated into and exercised through Xvfb.
         libxfont_2 = previous.libxfont_2.overrideAttrs (old: {
           postPatch = (old.postPatch or "") + ''
-            substituteInPlace Makefile.am \
+            substituteInPlace Makefile.in \
               --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
           '';
         });
@@ -93,8 +93,14 @@ let
       })
     ];
   };
-  static = (import flake.inputs.nixpkgs { inherit system; }).pkgsStatic;
+  hostPkgs = flake.inputs.nixpkgs.legacyPackages.${system};
+  static = hostPkgs.pkgsStatic;
   mesaZink = import /src/mesa-zink.nix { inherit system; };
+  bzip2Static = pkgs.bzip2.override { enableStatic = true; };
+  opensslStatic = (pkgs.openssl.override { static = true; }).overrideAttrs (old: {
+    configureFlags = (old.configureFlags or [ ]) ++ [ "no-tests" ];
+    doCheck = false;
+  });
   profiles = import /src/keyboard-profiles.nix;
   libxcvtStatic = pkgs.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
@@ -105,13 +111,28 @@ let
   prepareDependencies = dependencies:
     builtins.filter (dependency: (dependency.pname or "") != "libglvnd")
       (map (dependency:
-        if (dependency.pname or "") == "libxcvt" then libxcvtStatic else dependency
+        if (dependency.pname or "") == "libxcvt" then libxcvtStatic
+        else if (dependency.pname or "") == "openssl" then opensslStatic
+        else dependency
       ) dependencies);
+  prepareNativeDependencies = dependencies:
+    map (dependency:
+      if (dependency.pname or "") == "xkbcomp" then hostPkgs.xkbcomp else dependency
+    ) dependencies;
+  prepareMesonFlag = flag:
+    if builtins.match "-Dxkb_bin_dir=.*" flag != null then
+      "-Dxkb_bin_dir=${hostPkgs.xkbcomp}/bin"
+    else if builtins.match "-Dxkb_dir=.*" flag != null then
+      "-Dxkb_dir=${hostPkgs.xkeyboard_config}/share/X11/xkb"
+    else
+      flag;
   profileInputs = map (profile: profile // {
     symbolInclude = profile.layout + (if profile.variant == "" then "" else "(${profile.variant})");
   }) profiles;
   keymapBlobs = pkgs.runCommand "xvfb-static-glx-external-vulkan-keymaps" {
-    nativeBuildInputs = [ pkgs.xkbcomp ];
+    # xkbcomp and its source data generate embedded bytes at build time; they
+    # are not linked into the target and must use the normal native toolchain.
+    nativeBuildInputs = [ hostPkgs.xkbcomp ];
   } ''
     mkdir -p $out
     ${builtins.concatStringsSep "\n" (map (profile: ''
@@ -124,7 +145,7 @@ let
         xkb_geometry { include "pc(pc105)" };
       };
       EOF
-      xkbcomp -I${pkgs.xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
+      xkbcomp -I${hostPkgs.xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
       test -s $out/${profile.id}.xkm
     '') profileInputs)}
   '';
@@ -135,11 +156,27 @@ let
     pname = "xvfb-static-glx-external-vulkan";
     NIX_LDFLAGS = (old.NIX_LDFLAGS or "") + " -lstdc++";
     NIX_CFLAGS_LINK = (old.NIX_CFLAGS_LINK or "") + " -static-libgcc -static-libstdc++";
-    buildInputs = prepareDependencies (old.buildInputs or [ ]) ++ [ mesaZink ];
+    buildInputs = prepareDependencies (old.buildInputs or [ ]) ++ [
+      pkgs.brotli
+      bzip2Static
+      pkgs.freetype
+      pkgs.libfontenc
+      mesaZink
+      pkgs.libdrm
+      pkgs.libpng
+      pkgs.libx11
+      pkgs.libxcb
+      pkgs.libxext
+      pkgs.libxfixes
+      pkgs.libxxf86vm
+      opensslStatic
+      pkgs.zlib
+    ];
     propagatedBuildInputs =
       prepareDependencies (old.propagatedBuildInputs or [ ]) ++ [ mesaZink ];
-    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.patchelf ];
-    mesonFlags = (old.mesonFlags or [ ]) ++ [
+    nativeBuildInputs = prepareNativeDependencies (old.nativeBuildInputs or [ ])
+      ++ [ pkgs.patchelf ];
+    mesonFlags = map prepareMesonFlag (old.mesonFlags or [ ]) ++ [
       "-Dglx=true"
       "-Dc_link_args=-Wl,--allow-multiple-definition"
     ];
@@ -151,9 +188,22 @@ let
       /src/patches/xserver-0004-linked-swrast.patch
     ];
     postPatch = (old.postPatch or "") + ''
+      substituteInPlace meson.build \
+        --replace-fail "libcrypto_dep = cc.find_library('crypto', required: false)" \
+        "libcrypto_dep = cc.find_library('crypto', required: false, static: true)"
+      substituteInPlace meson.build \
+        --replace-fail "xfont2_dep = dependency('xfont2', version: '>= 2.0')" \
+        "xfont2_dep = dependency('xfont2', version: '>= 2.0', static: true)"
+      substituteInPlace glx/meson.build \
+        --replace-fail "dependency('gl', version: '>= 1.2')" \
+        "dependency('gl', version: '>= 1.2', static: true)"
+      substituteInPlace meson.build \
+        --replace-fail "if host_machine.system() != 'windows'
+    subdir('test')
+endif" "message('Skipping unshipped Xserver test targets')"
       substituteInPlace hw/vfb/meson.build \
         --replace-fail 'dependencies: common_dep,' \
-        "dependencies: common_dep, link_args: '-Wl,--gc-sections',"
+        "dependencies: common_dep, link_args: ['-Wl,--gc-sections', '${pkgs.lib.getLib bzip2Static}/lib/libbz2.a', '${pkgs.lib.getLib opensslStatic}/lib/libcrypto.a'],"
       header=xkb/xvfb_static_keymap_blob.h
       : > "$header"
       ${builtins.concatStringsSep "\n" (map (profile: ''
@@ -161,10 +211,8 @@ let
         od -An -v -tu1 ${keymapBlobs}/${profile.id}.xkm | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/' >> "$header"
         echo '};' >> "$header"
       '') profiles)}
-      cat >> "$header" <<'EOF'
-      struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };
-      static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {
-      EOF
+      echo 'struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };' >> "$header"
+      echo 'static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {' >> "$header"
       ${builtins.concatStringsSep "\n" (map (profile: ''
         echo '{ "${profile.id}", xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}, sizeof(xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}) },' >> "$header"
       '') profiles)}
@@ -181,7 +229,14 @@ let
   releaseRevision = standardPackage.releaseRevision;
 in
 pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
-  nativeBuildInputs = [ pkgs.gnutar pkgs.gzip pkgs.jq pkgs.patchelf pkgs.xz pkgs.stdenv.cc.bintools ];
+  nativeBuildInputs = [
+    hostPkgs.gnutar
+    hostPkgs.gzip
+    hostPkgs.jq
+    hostPkgs.patchelf
+    hostPkgs.xz
+    hostPkgs.stdenv.cc.bintools
+  ];
   passthru = {
     inherit releaseRevision releaseVersion;
     upstreamVersion = xvfbGlx.version;
@@ -220,7 +275,8 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   while IFS= read -r library; do
     test -n "$library" || continue
     case "$library" in
-      libc.so.6|libdl.so.2|libm.so.6|libpthread.so.0|librt.so.1) ;;
+      libc.so.6|libdl.so.2|libm.so.6|libpthread.so.0|librt.so.1|\
+      ld-linux-aarch64.so.1|ld-linux-x86-64.so.2) ;;
       *) echo "xvfb-static: unexpected dynamic dependency: $library" >&2; exit 1 ;;
     esac
   done <<< "$needed"
