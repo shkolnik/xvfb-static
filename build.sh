@@ -31,7 +31,7 @@ docker run --rm \
     git config --global --add safe.directory /src
     /src/nix-build-cached.sh \\
       nix --extra-experimental-features 'nix-command flakes' \\
-      build '.#xvfb-static-$arch' -o /src/out/$arch/result --print-build-logs --impure
+      build '.#xvfb-static-$arch' -o /src/out/$arch/result --option log-lines 200 --impure
     rm -rf /src/out/$arch/package
     mkdir -p /src/out/$arch/package/bin /src/out/$arch/package/share/xvfb-static/licenses
     cp -L /src/out/$arch/result/bin/Xvfb /src/out/$arch/package/bin/

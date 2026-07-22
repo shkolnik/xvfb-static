@@ -33,7 +33,7 @@ docker run --rm \
     /src/nix-build-cached.sh \\
       nix --extra-experimental-features 'nix-command flakes' \\
       build 'path:/src#xvfb-static-glx-external-vulkan-alpha-$arch' \\
-      -o /src/out/glx-external-vulkan-alpha/$arch/result --print-build-logs --impure
+      -o /src/out/glx-external-vulkan-alpha/$arch/result --option log-lines 200 --impure
     rm -rf /src/out/glx-external-vulkan-alpha/$arch/package
     mkdir -p \
       /src/out/glx-external-vulkan-alpha/$arch/package/bin \

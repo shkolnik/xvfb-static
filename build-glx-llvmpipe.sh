@@ -33,7 +33,7 @@ docker run --rm \
     /src/nix-build-cached.sh \\
       nix --extra-experimental-features 'nix-command flakes' \\
       build 'path:/src#xvfb-static-glx-llvmpipe-alpha-$arch' \\
-      -o /src/out/glx-llvmpipe-alpha/$arch/result --print-build-logs --impure
+      -o /src/out/glx-llvmpipe-alpha/$arch/result --option log-lines 200 --impure
     rm -rf /src/out/glx-llvmpipe-alpha/$arch/package
     mkdir -p \
       /src/out/glx-llvmpipe-alpha/$arch/package/bin \
