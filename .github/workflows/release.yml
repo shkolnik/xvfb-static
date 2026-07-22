@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build-and-smoke:
-    name: Build and smoke-test (${{ matrix.arch }})
+    name: Build and smoke-test (${{ matrix.variant }}, ${{ matrix.arch }})
     permissions:
       artifact-metadata: write
       attestations: write
@@ -25,30 +25,82 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-24.04
+            variant: standard
+            artifact: xvfb-static-linux-x86_64
+            archive: out/x86_64/xvfb-static-linux-x86_64.tar.gz
           - arch: aarch64
             runner: ubuntu-24.04-arm
+            variant: standard
+            artifact: xvfb-static-linux-aarch64
+            archive: out/aarch64/xvfb-static-linux-aarch64.tar.gz
+          - arch: x86_64
+            runner: ubuntu-24.04
+            variant: glx
+            artifact: xvfb-static-glx-alpha-linux-x86_64
+            archive: out/glx-alpha/x86_64/xvfb-static-glx-alpha-linux-x86_64.tar.gz
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            variant: glx
+            artifact: xvfb-static-glx-alpha-linux-aarch64
+            archive: out/glx-alpha/aarch64/xvfb-static-glx-alpha-linux-aarch64.tar.gz
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
-      - run: ./build.sh "${{ matrix.arch }}"
+      - if: matrix.variant == 'standard'
+        run: ./build.sh "${{ matrix.arch }}"
         env:
           CACHIX_CACHE_NAME: xvfb-static
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
           CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
-      - run: ./test/smoke.sh "out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz"
-      - run: ./test/integration.sh "${{ matrix.arch }}"
+      - if: matrix.variant == 'glx'
+        run: ./build-glx.sh "${{ matrix.arch }}"
         env:
           CACHIX_CACHE_NAME: xvfb-static
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
           CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
+      - if: matrix.variant == 'standard'
+        run: ./test/integration.sh "${{ matrix.arch }}"
+        env:
+          CACHIX_CACHE_NAME: xvfb-static
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
+      - if: matrix.variant == 'glx'
+        name: Build GLX render test
+        env:
+          CACHIX_CACHE_NAME: xvfb-static
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
+        run: |
+          docker run --rm \
+            -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
+            -e CACHIX_CACHE_NAME -e CACHIX_AUTH_TOKEN -e CACHIX_SIGNING_KEY \
+            -v "$PWD":/src -w /src \
+            -v xvfb-static-nix:/nix \
+            nixos/nix@sha256:377d4887aca98f0dfa12971c1ea6d6a625a435d8b610d4c95a436843da6fbfd1 \
+            sh -eu -c '
+              git config --global --add safe.directory /src
+              /src/nix-build-cached.sh nix \
+                --extra-experimental-features "nix-command flakes" build \
+                --impure --file /src/test/glx-render.nix \
+                --out-link /tmp/result-glx-render-test --print-build-logs
+              test -x /tmp/result-glx-render-test/bin/glx-render-test
+              rm -rf /src/result-glx-render-test
+              mkdir -p /src/result-glx-render-test/bin
+              install -m 0755 /tmp/result-glx-render-test/bin/glx-render-test \
+                /src/result-glx-render-test/bin/glx-render-test
+            '
+          test -x result-glx-render-test/bin/glx-render-test
+      - run: ./test/smoke.sh "${{ matrix.archive }}"
+      - if: matrix.variant == 'glx'
+        run: ./test/glx-smoke.sh "${{ matrix.archive }}"
       - name: Attest release archive
         uses: actions/attest@v4
         with:
-          subject-path: out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz
+          subject-path: ${{ matrix.archive }}
       - uses: actions/upload-artifact@v7
         with:
-          name: xvfb-static-linux-${{ matrix.arch }}
-          path: out/${{ matrix.arch }}/xvfb-static-linux-${{ matrix.arch }}.tar.gz
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.archive }}
           if-no-files-found: error
 
   publish:
@@ -62,7 +114,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          pattern: xvfb-static-linux-*
+          pattern: xvfb-static-*
           path: dist
           merge-multiple: true
       - name: Validate version and assemble release
@@ -93,13 +145,31 @@ jobs:
               echo "$archive contains X.Org Server $manifest_upstream, but tag $tag declares $upstream_version" >&2
               exit 1
             fi
+
+            glx_archive="dist/xvfb-static-glx-alpha-linux-$arch.tar.gz"
+            test -s "$glx_archive"
+            glx_manifest="$(tar -xOf "$glx_archive" share/xvfb-static/manifest.json)"
+            glx_release="$(jq -er '.version' <<<"$glx_manifest")"
+            glx_upstream="$(jq -er '.components["xorg-server"]' <<<"$glx_manifest")"
+            jq -e '.variant == "glx" and .maturity == "alpha" and .renderer == "llvmpipe"' \
+              <<<"$glx_manifest" >/dev/null
+            if [[ "$glx_release" != "$release_version" ]]; then
+              echo "$glx_archive declares release $glx_release, but tag $tag declares $release_version" >&2
+              exit 1
+            fi
+            if [[ "$glx_upstream" != "$upstream_version" ]]; then
+              echo "$glx_archive contains X.Org Server $glx_upstream, but tag $tag declares $upstream_version" >&2
+              exit 1
+            fi
           done
 
           (
             cd dist
             sha256sum \
               xvfb-static-linux-x86_64.tar.gz \
-              xvfb-static-linux-aarch64.tar.gz > SHA256SUMS
+              xvfb-static-linux-aarch64.tar.gz \
+              xvfb-static-glx-alpha-linux-x86_64.tar.gz \
+              xvfb-static-glx-alpha-linux-aarch64.tar.gz > SHA256SUMS
           )
 
           nixpkgs_revision="$(jq -er '.nodes.nixpkgs.locked.rev' flake.lock)"
@@ -107,7 +177,9 @@ jobs:
             printf 'xvfb-static %s packages X.Org Server %s.\n\n' "$tag" "$upstream_version"
             printf -- '- x86_64: built and boot-tested on a native GitHub-hosted runner\n'
             printf -- '- aarch64: built and boot-tested on a native GitHub-hosted runner\n'
-            printf -- '- both archives have GitHub build-provenance attestations\n'
+            printf -- '- standard and GLX alpha archives were built and tested for both architectures\n'
+            printf -- '- GLX alpha uses Mesa llvmpipe software rendering and is experimental\n'
+            printf -- '- all four archives have GitHub build-provenance attestations\n'
             printf -- '- nixpkgs revision: `%s`\n' "$nixpkgs_revision"
             printf -- '- source commit: `%s`\n\n' "$GITHUB_SHA"
             printf 'This build embeds 28 curated keyboard profiles. `us` is the default; select another at startup with `-keyboard PROFILE`. Arbitrary layouts and live switching are unsupported.\n'
@@ -119,6 +191,8 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/xvfb-static-linux-x86_64.tar.gz \
             dist/xvfb-static-linux-aarch64.tar.gz \
+            dist/xvfb-static-glx-alpha-linux-x86_64.tar.gz \
+            dist/xvfb-static-glx-alpha-linux-aarch64.tar.gz \
             dist/SHA256SUMS \
             --verify-tag \
             --title "xvfb-static $GITHUB_REF_NAME" \

@@ -19,19 +19,16 @@ not for feature parity with a distribution Xvfb package.
 
 ## 2. Current status and provenance
 
-The project has passed static checks: shell parsing, executable-bit checks,
-path and branding scans, and patch/build-file consistency inspection.
+The standard artifact has been released after native x86_64 and aarch64 builds
+and Alpine smoke tests on GitHub-hosted runners. The GLX alpha proof of concept
+has also built and passed its llvmpipe render/readback test on native runners
+for both architectures. Keep the alpha label until compatibility has received
+broader real-world testing; a green render test establishes the intended path,
+not general GLX application compatibility.
 
-- The two X.Org patches in this repository have previously been used to build
-  and boot a static x86_64 Xvfb.
-- This repository has **not yet been built end-to-end from a clean checkout**.
-  Treat clean native builds and Alpine smoke tests for both architectures as
-  the immediate pre-publication gate. Do not erase this caveat until you
-  personally run the commands and observe them pass.
-- x86_64 and aarch64 are configured as native sibling builds. On 2026-07-21,
-  the curated-profile branch built and passed its Alpine smoke and 28-profile
-  Nix integration checks on native Apple-silicon aarch64 Docker. The workspace
-  was not a clean checkout, so this does not close the clean-build gate above.
+On 2026-07-21, the curated-profile branch also built and passed its Alpine
+smoke and 28-profile Nix integration checks on native Apple-silicon aarch64
+Docker. The combined GLX/profile branch still requires both native CI jobs.
 
 This repository must stay understandable, buildable, testable, and legally
 distributable on its own.
@@ -57,6 +54,13 @@ The archive itself is deterministic given the same declared inputs:
 - owner and group are fixed to numeric zero;
 - timestamps use a fixed `SOURCE_DATE_EPOCH` value;
 - the resulting archive receives a SHA-256 checksum.
+
+The standard variant disables GLX. The separately named GLX alpha variant
+statically embeds Mesa llvmpipe and LLVM for software-rendered indirect GLX.
+Its manifest must declare the `glx` variant, `alpha` maturity, llvmpipe
+renderer, and exact Mesa and LLVM versions. Never remove the alpha designation
+from filenames alone while leaving contradictory manifest or documentation
+metadata.
 
 ### Intentional capability reduction
 
@@ -124,6 +128,9 @@ architecture recommendations.
 | `flake.lock` | Exact nixpkgs revision and content hash. This transitively pins X.Org and linked dependencies. |
 | `package.nix` | Core build: static-libxcvt workaround, embedded keymap, Xvfb override, stripping, license extraction, and manifest generation. |
 | `build.sh` | Docker-only entry point and reproducible archive/checksum assembly. |
+| `mesa-llvmpipe.nix` | Minimal static Mesa llvmpipe and target-specific LLVM configuration used by the GLX alpha variant. |
+| `package-glx.nix` | GLX alpha Xvfb build, packaging, expanded license extraction, and variant manifest. |
+| `build-glx.sh` | Docker-only entry point for deterministic GLX alpha archives. |
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
 | `nix-build-cached.sh` | In-container build wrapper: configures public cache reads and pushes new paths when authenticated. |
 | `release.sh` | Local maintainer helper that selects the next release revision, commits it when needed, creates a signed tag, and atomically pushes it to GitHub. |
@@ -132,13 +139,15 @@ architecture recommendations.
 | `patches/xserver-0003-keyboard-profile-option.patch` | Adds the Xvfb-only `-keyboard PROFILE` startup selector. |
 | `patches/xserver-0004-component-log-prefixes.patch` | Adds stable component labels to project-owned Xserver and XKB diagnostics. |
 | `test/smoke.sh` | Extracts the archive, checks its shape/static linkage, and boots Xvfb inside clean Alpine. |
+| `test/glx-render.nix` / `test/glx-render.c` | Builds the static GLX client used for render/readback verification. |
+| `test/glx-smoke.sh` | Extracts a GLX alpha archive and verifies indirect llvmpipe rendering in clean Alpine. |
 | `docs/KEYBOARD-INPUT-ARCHITECTURE.md` | General recommendations for profile-aware Unicode-to-physical-key input. |
 | `THIRD-PARTY-NOTICES.md` | Explains artifact licensing and pinned-source provenance. |
 | `LICENSE` / `NOTICE` | Apache-2.0 licensing for original project code and patches; not a blanket license for Xvfb. |
 | `SECURITY.md` | Supported-version and private-reporting policy. |
 | `CONTRIBUTING.md` | Public contribution expectations and minimum local gates. |
-| `.github/workflows/ci.yml` | Builds and smoke-tests both architectures on native runners, then uploads ephemeral CI artifacts. |
-| `.github/workflows/release.yml` | Validates `v<upstream>-r<revision>` tags, builds and smoke-tests both native architectures, attests both archives, and publishes them with combined checksums. |
+| `.github/workflows/ci.yml` | Builds and smoke-tests standard and GLX alpha artifacts on both native architectures, then uploads all four ephemeral CI artifacts. |
+| `.github/workflows/release.yml` | Validates `v<upstream>-r<revision>` tags, builds and tests all four native artifacts, attests them, and publishes them with combined checksums. |
 | `.github/dependabot.yml` | Monthly GitHub Actions update checks. It does not update Nix inputs. |
 | `out/` | Ignored local build products. Never treat these as source. |
 
@@ -146,7 +155,7 @@ architecture recommendations.
 
 ### Layer 1: pinned environment
 
-`build.sh` starts a digest-pinned `nixos/nix` container and mounts:
+`build.sh` and `build-glx.sh` start a digest-pinned `nixos/nix` container and mount:
 
 - the repository at `/src`;
 - a named Docker volume, `xvfb-static-nix`, at `/nix` for build-cache
@@ -155,7 +164,7 @@ architecture recommendations.
 The host needs only Docker. Files created as root in the container are handed
 back to the invoking host UID/GID before exit.
 
-When `CACHIX_CACHE_NAME` is set, `build.sh` installs the Cachix client from
+When `CACHIX_CACHE_NAME` is set, either build script installs the Cachix client from
 the locked nixpkgs input inside the container and configures that public
 binary cache as a substituter. When `CACHIX_AUTH_TOKEN` and the self-managed
 `CACHIX_SIGNING_KEY` are also set, the build runs under `cachix watch-exec`,
@@ -187,6 +196,12 @@ than re-creating the X server configuration flags. It:
 
 The keymap compiler and XKB source data are build-time inputs only.
 
+`package-glx.nix` preserves that keymap design, links the Gallium swrast
+frontend and llvmpipe into Xvfb, and garbage-collects unused final-link
+sections. Mesa's dynamic `dril` loader is deliberately not built: the alpha
+binary uses the project-provided linked swrast entrypoint instead and ships no
+DSO. Do not remove exception handling from LLVM or libstdc++ to reduce size.
+
 ### Layer 3: attribution and manifest
 
 The package derivation extracts license files from pinned Nix source
@@ -198,9 +213,10 @@ the manifest and the smoke test should be updated together.
 
 ### Layer 4: deterministic release archive
 
-`build.sh` dereferences the Nix result, creates
-`xvfb-static-linux-<arch>.tar.gz`, and writes `SHA256SUMS`. Local
-outputs live under `out/<arch>/` and are ignored by Git.
+`build.sh` creates `xvfb-static-linux-<arch>.tar.gz` under `out/<arch>/`.
+`build-glx.sh` creates `xvfb-static-glx-alpha-linux-<arch>.tar.gz` under
+`out/glx-alpha/<arch>/`. Both dereference their Nix result and write a local
+`SHA256SUMS`; all output paths are ignored by Git.
 
 ## 6. Normal development workflow
 
@@ -364,8 +380,9 @@ uncertain licensing questions rather than silently optimizing notices away.
 
 ## 10. CI and release expectations
 
-CI builds and smoke-tests x86_64 and aarch64 on matching native runners, then
-uploads ephemeral workflow artifacts. Tags matching
+CI builds and smoke-tests the standard and GLX alpha variants for x86_64 and
+aarch64 on matching native runners, then uploads four ephemeral workflow
+artifacts. Tags matching
 `v<upstream-xorg-version>-r<positive-revision>` trigger the release workflow.
 The upstream portion must match the X.Org Server version in both artifact
 manifests, and the full tag must match the manifest's xvfb-static version. The
@@ -384,12 +401,13 @@ branches. Keep the Docker image digest in `release.sh` synchronized with
 The release workflow:
 
 - triggers from an intentional version tag;
-- builds x86_64 and aarch64 from the tagged commit;
-- boot-tests both artifacts in Alpine on matching native runners;
-- uploads both archives and one unambiguous checksum file;
+- builds both variants for x86_64 and aarch64 from the tagged commit;
+- boot-tests all four artifacts in Alpine on matching native runners;
+- render-tests the packaged GLX alpha binaries with llvmpipe pixel readback;
+- uploads all four archives and one unambiguous checksum file;
 - identifies the X.Org version, nixpkgs revision, architectures,
   embedded-layout limitation, and verification status;
-- generates Sigstore-backed GitHub build-provenance attestations for both
+- generates Sigstore-backed GitHub build-provenance attestations for all four
   archives before publication;
 - gives build jobs only source-read plus attestation, artifact-metadata, and
   OIDC permissions, while the publishing job receives artifact-read and
@@ -409,18 +427,27 @@ real hardware.
 
 In priority order:
 
-1. **Run the first clean builds.** Fix any build issues, then run
-   `test/smoke.sh` natively on both architectures and inspect both archives
-   manually.
+1. **Validate the GLX alpha release artifacts.** Inspect both packaged GLX
+   archives from native CI, boot them in Alpine, and exercise llvmpipe pixel
+   readback before promoting the variant beyond alpha.
 2. **Validate compliance against the actual closure.** Confirm every linked or
    incorporated component and its required notices.
 3. **Prove reproducibility.** Build twice from clean output directories (and
    ideally on two hosts) and compare archive SHA-256 values. A persistent Nix
    cache is fine; source output state must not leak between attempts.
-4. **Verify aarch64.** Record the first successful native build and smoke test.
-5. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
+4. **Retest both architectures after shipped-byte changes.** Native x86_64 and
+   aarch64 builds and smoke tests are established CI gates; keep them symmetric.
+5. **Add explicit negative tests.** Pin the absence of runtime XKB files and
+   the refusal/failure behavior for unsupported keymap paths.
+6. **Add a license-audit helper.** Centralize the package-to-license-file
+   mapping used by packaging, enumerate the Nix closure, report unmapped or
+   removed dependencies, and verify that every mapped source text and packaged
+   license is present and non-empty. Keep the final coverage decision subject
+   to human review: Nix metadata cannot prove which code from a static archive
+   was incorporated or identify every nested third-party component.
+7. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
    static closure and complement, not replace, license texts.
-6. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
+8. **Pin GitHub Actions by commit SHA.** Dependabot can maintain those pins.
 
 ## 12. Engineering principles
 
@@ -534,8 +561,8 @@ that can be checked only against an artifact.
 
 1. Read `README.md` and this file completely.
 2. Run `git status --short` and preserve user work.
-3. Determine whether the first standalone build gap in section 2 has been
-   closed by newer committed evidence.
+3. Review the current verification status in section 2 and distinguish the
+   stable standard artifacts from the experimental GLX alpha artifacts.
 4. Inspect the latest commit history and open issues.
 5. Confirm Docker availability and architecture.
 6. If touching shipped bytes, build and smoke-test before claiming success.
