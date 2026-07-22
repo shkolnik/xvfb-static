@@ -233,9 +233,11 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
     hostPkgs.gnutar
     hostPkgs.gzip
     hostPkgs.jq
+    hostPkgs.perl
     hostPkgs.patchelf
     hostPkgs.xz
     hostPkgs.stdenv.cc.bintools
+    pkgs.nukeReferences
   ];
   passthru = {
     inherit releaseRevision releaseVersion;
@@ -255,14 +257,23 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   ${pkgs.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
   patchelf --set-interpreter ${interpreter} --remove-rpath $out/bin/Xvfb
 
+  # Static libraries carry build-time resource defaults and discarded linker
+  # paths into the final string table.  They cannot resolve on a target host,
+  # and retaining their store hashes would make the artifact depend on its
+  # build closure.  Nuke every store reference, then rewrite the uniform dead
+  # prefix to an equally sized, explicitly unavailable runtime path.
+  nuke-refs $out/bin/Xvfb
+  perl -0pi -e \
+    's{/nix/store/e{32}-}{/nonexistent/xvfb-static/store-reference-xxx}g' \
+    $out/bin/Xvfb
+
   test "$(patchelf --print-interpreter $out/bin/Xvfb)" = "${interpreter}"
   test -z "$(patchelf --print-rpath $out/bin/Xvfb)"
-  if strings $out/bin/Xvfb | grep -q '/nix/store'; then
-    echo 'xvfb-static: external Vulkan binary contains a Nix store reference' >&2
-    exit 1
-  fi
-  if strings $out/bin/Xvfb | grep -Eq 'libLLVM|LLVM_[0-9]'; then
-    echo 'xvfb-static: external Vulkan binary unexpectedly contains LLVM' >&2
+  forbidden_strings="$(strings $out/bin/Xvfb |
+    grep -E '/nix/store|libLLVM|LLVM_[0-9]' || true)"
+  if test -n "$forbidden_strings"; then
+    echo 'xvfb-static: external Vulkan binary contains forbidden Nix-store or LLVM references:' >&2
+    printf '%s\n' "$forbidden_strings" >&2
     exit 1
   fi
 

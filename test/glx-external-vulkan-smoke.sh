@@ -63,8 +63,10 @@ if readelf -dW "$binary" | grep -Eq '\((RPATH|RUNPATH)\)'; then
   echo "external Vulkan Xvfb must not contain RPATH or RUNPATH" >&2
   exit 1
 fi
-if strings "$binary" | grep -Eq '/nix/store|libLLVM|LLVM_[0-9]'; then
-  echo "external Vulkan Xvfb contains a Nix-store or LLVM reference" >&2
+forbidden_strings="$(strings "$binary" | grep -E '/nix/store|libLLVM|LLVM_[0-9]' || true)"
+if [[ -n "$forbidden_strings" ]]; then
+  echo "external Vulkan Xvfb contains forbidden Nix-store or LLVM references:" >&2
+  printf '%s\n' "$forbidden_strings" >&2
   exit 1
 fi
 
@@ -105,7 +107,8 @@ needed="$(readelf -dW "$binary" | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1
 while IFS= read -r library; do
   [[ -z "$library" ]] && continue
   case "$library" in
-    libc.so.6|libdl.so.2|libm.so.6|libpthread.so.0|librt.so.1|libvulkan.so.1) ;;
+    libc.so.6|libdl.so.2|libm.so.6|libpthread.so.0|librt.so.1|libvulkan.so.1|\
+      ld-linux-aarch64.so.1|ld-linux-x86-64.so.2) ;;
     *) echo "unexpected dynamic dependency: $library" >&2; exit 1 ;;
   esac
 done <<< "$needed"
