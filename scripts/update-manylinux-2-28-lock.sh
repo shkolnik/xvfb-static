@@ -31,13 +31,10 @@ prefetch_lock() {
   esac
 
   digest=$(docker buildx imagetools inspect "${image}:latest" --format '{{json .}}' | jq -er '.manifest.digest')
-  case "$digest" in
-    sha256:[0-9a-f][0-9a-f]*) ;;
-    *)
-      echo "failed to resolve an immutable digest for ${image}: ${digest}" >&2
-      exit 1
-      ;;
-  esac
+  if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo "failed to resolve an immutable digest for ${image}: ${digest}" >&2
+    exit 1
+  fi
 
   if ! prefetch=$(docker run --rm --platform "$docker_platform" \
     -v "$repo_root":/src -v xvfb-static-nix:/nix -w /src \
