@@ -32,6 +32,12 @@ let
           withIntel = false;
           withValgrind = false;
         };
+        # Pixman's test executables are not incorporated into Xvfb and their
+        # static libpng link omits libz. The packaged GLX render test exercises
+        # the incorporated pixman library at the product boundary.
+        pixman = previous.pixman.overrideAttrs (old: {
+          mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dtests=disabled" ];
+        });
         # libffi's checks add DejaGNU/Expect and a build-platform Tcl whose
         # shared-library assumptions are incompatible with this static stdenv.
         # The final Xvfb render/readback test exercises the incorporated FFI
