@@ -20,7 +20,9 @@ let
             (flag: flag != "--enable-static" && flag != "--disable-shared")
             (old.configureFlags or [ ]);
         });
-        cmake = previous.cmake.overrideAttrs (old: {
+        # Build-only consumers here need the CMake generator, not CTest/CPack
+        # or full CMake's static libarchive dependency closure.
+        cmake = previous.cmakeMinimal.overrideAttrs (old: {
           dontAddStaticConfigureFlags = true;
           configureFlags = builtins.filter
             (flag: flag != "--enable-static" && flag != "--disable-shared")
