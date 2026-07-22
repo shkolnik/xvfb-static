@@ -43,6 +43,22 @@ let
         sqlite = previous.sqlite.overrideAttrs (_old: {
           doCheck = false;
         });
+        pythonPackagesExtensions = previous.pythonPackagesExtensions ++ [
+          (_pythonFinal: pythonPrevious:
+            previous.lib.mapAttrs (_name: package:
+              if previous.lib.isDerivation package && package ? overridePythonAttrs
+              then package.overridePythonAttrs (_old: {
+                # These packages are build tooling for Mesa, not runtime
+                # contents. Their upstream suites assume optional dynamic
+                # Python extensions that this static-library environment may
+                # omit. Mesa configuration/compilation and the packaged GLX
+                # render test exercise the relevant behavior instead.
+                doCheck = false;
+                doInstallCheck = false;
+              })
+              else package
+            ) pythonPrevious)
+        ];
         # The static build cannot dlopen libxml2's shared test module.  The
         # library and command-line tools still build normally; only that
         # shared-module-dependent check phase is incompatible with this
