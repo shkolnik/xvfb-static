@@ -7,6 +7,12 @@ let
       pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
     overlays = [
       (_final: previous: {
+        # makeStaticLibraries does not mark the platform as isStatic, so
+        # curl's default feature detection otherwise enables GSS/Kerberos.
+        # Curl is build infrastructure here; the artifact neither links nor
+        # needs its Kerberos integration.
+        curlMinimal = previous.curlMinimal.override { gssSupport = false; };
+        curl = previous.curl.override { gssSupport = false; };
         # CMake's bootstrap script rejects Autoconf's --disable-shared flag.
         cmakeMinimal = previous.cmakeMinimal.overrideAttrs (old: {
           dontAddStaticConfigureFlags = true;
