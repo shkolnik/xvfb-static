@@ -106,7 +106,11 @@ jobs:
                 /src/result-glx-render-test/bin/glx-render-test
             '
           test -x result-glx-render-test/bin/glx-render-test
-      - run: ./test/smoke.sh "${{ matrix.archive }}"
+      # The external Vulkan artifact intentionally uses the host glibc and
+      # Vulkan loader, so it must use its ABI/Zink smoke test instead of the
+      # fully-static Alpine smoke test.
+      - if: matrix.variant != 'glx-external-vulkan'
+        run: ./test/smoke.sh "${{ matrix.archive }}"
       - if: matrix.variant == 'glx-llvmpipe'
         run: ./test/glx-llvmpipe-smoke.sh "${{ matrix.archive }}"
       - if: matrix.variant == 'glx-external-vulkan'
