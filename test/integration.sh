@@ -12,7 +12,7 @@ fi
 case "$arch" in x86_64|aarch64) ;; *) echo "usage: $0 [x86_64|aarch64]" >&2; exit 2 ;; esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-image="nixos/nix@sha256:377d4887aca98f0dfa12971c1ea6d6a625a435d8b610d4c95a436843da6fbfd1"
+image="nixos/nix@sha256:22c0a3a816eb3d315eb6720d2a58a3c3b622c9717c578f3c80b687668c6da277"
 docker run --rm \
   -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
   -e CACHIX_CACHE_NAME -e CACHIX_AUTH_TOKEN -e CACHIX_SIGNING_KEY \

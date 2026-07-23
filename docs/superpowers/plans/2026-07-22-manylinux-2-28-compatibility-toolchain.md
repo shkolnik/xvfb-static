@@ -85,7 +85,7 @@ Run:
 docker run --rm --platform linux/arm64 \
   -v "$PWD":/src -v xvfb-static-nix:/nix -w /src \
   -e NIX_CONFIG='experimental-features = nix-command flakes' \
-  nixos/nix@sha256:377d4887aca98f0dfa12971c1ea6d6a625a435d8b610d4c95a436843da6fbfd1 \
+  nixos/nix@sha256:22c0a3a816eb3d315eb6720d2a58a3c3b622c9717c578f3c80b687668c6da277 \
   nix eval --impure --json --expr \
   'import /src/nix/manylinux-2-28-images.nix { system = "aarch64-linux"; }'
 ```
