@@ -19,7 +19,7 @@ docker run --rm \
   -v "$root":/src -w /src -v xvfb-static-nix:/nix \
   "$image" sh -eu -c "
     git config --global --add safe.directory /src
-    /src/nix-build-cached.sh nix --extra-experimental-features 'nix-command flakes' \
+    bash /src/nix-build-cached.sh nix --extra-experimental-features 'nix-command flakes' \
       build '.#checks.$(case "$arch" in x86_64) echo x86_64-linux ;; aarch64) echo aarch64-linux ;; esac).keyboard-profiles' \
       --no-link --option log-lines 200 --impure
   "

@@ -29,7 +29,7 @@ docker run --rm \
   "$image" sh -c "
     set -eu
     git config --global --add safe.directory /src
-    /src/nix-build-cached.sh \\
+    bash /src/nix-build-cached.sh \\
       nix --extra-experimental-features 'nix-command flakes' \\
       build '.#xvfb-static-$arch' -o /src/out/$arch/result --option log-lines 200 --impure
     rm -rf /src/out/$arch/package

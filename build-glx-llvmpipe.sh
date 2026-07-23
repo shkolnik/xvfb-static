@@ -30,7 +30,7 @@ docker run --rm \
   "$image" sh -c "
     set -eu
     git config --global --add safe.directory /src
-    /src/nix-build-cached.sh \\
+    bash /src/nix-build-cached.sh \\
       nix --extra-experimental-features 'nix-command flakes' \\
       build 'path:/src#xvfb-static-glx-llvmpipe-alpha-$arch' \\
       -o /src/out/glx-llvmpipe-alpha/$arch/result --option log-lines 200 --impure
