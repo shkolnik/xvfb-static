@@ -21,7 +21,7 @@ for command in jq readelf strings tar; do
 done
 test -s "$archive" || { echo "missing archive: $archive" >&2; exit 1; }
 
-tmp="$(mktemp -d /tmp/xvfb-static-glx-external-vulkan.XXXXXX)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/xvfb-static-glx-external-vulkan.XXXXXX")"
 name="xvfb-static-glx-external-vulkan-$$"
 cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
@@ -30,7 +30,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-tar -xzf "$archive" -C "$tmp"
+tar --no-same-owner --no-same-permissions -xzf "$archive" -C "$tmp"
 manifest="$tmp/share/xvfb-static/manifest.json"
 binary="$tmp/bin/Xvfb"
 
@@ -126,6 +126,10 @@ command -v docker >/dev/null || {
 test -x "$render_test" || { echo "missing render test: $render_test" >&2; exit 1; }
 cp -L "$render_test" "$tmp/glx-render-test"
 
+# Debian 11 supplies the advertised glibc/loader floor for the structural and
+# failure-path checks.  Its Mesa 22 lavapipe predates Zink's required
+# nullDescriptor feature, so the positive software-ICD integration check uses
+# a newer runtime below.
 docker run --name "$name" --rm \
   -v "$tmp":/package:ro \
   debian:11-slim sh -eu -c '
@@ -177,9 +181,21 @@ docker run --name "$name" --rm \
 
     run_failure_case missing-icd VK_ICD_FILENAMES=/nonexistent/xvfb-static-vulkan-icd.json
 
+  '
+
+positive_name="${name}-positive"
+docker run --name "$positive_name" --rm \
+  -v "$tmp":/package:ro \
+  debian:trixie-slim sh -eu -c '
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update >/dev/null
+    apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri >/dev/null
     icd=$(find /usr/share/vulkan/icd.d -type f -name "lvp_icd*.json" -print -quit)
     test -n "$icd"
-    VK_ICD_FILENAMES="$icd" \
+    # Zink normally rejects CPU Vulkan devices. This explicit setting selects
+    # lavapipe for integration coverage; the production artifact still has no
+    # compiled software renderer and actual-GPU validation remains separate.
+    LIBGL_ALWAYS_SOFTWARE=1 VK_ICD_FILENAMES="$icd" \
       /package/bin/Xvfb :99 +iglx -screen 0 64x64x24 >/tmp/positive.xvfb.log 2>&1 &
     pid=$!
     trap "kill $pid 2>/dev/null || true" EXIT

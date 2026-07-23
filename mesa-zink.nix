@@ -1,11 +1,24 @@
-{ system ? builtins.currentSystem }:
+{ system ? builtins.currentSystem
+, targetPkgs ? null
+, hostPkgs ? null
+}:
 let
-  flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs {
+  providedTargetPkgs = targetPkgs;
+  providedHostPkgs = hostPkgs;
+  packageSets =
+    if providedTargetPkgs == null && providedHostPkgs == null then
+      import /src/nix/manylinux-2-28-packages.nix { inherit system; }
+    else if providedTargetPkgs != null && providedHostPkgs != null then
+      { targetPkgs = providedTargetPkgs; hostPkgs = providedHostPkgs; }
+    else
+      throw "mesa-zink: targetPkgs and hostPkgs must be supplied together";
+  target = packageSets.targetPkgs;
+  host = packageSets.hostPkgs;
+  toolchain = import /src/nix/manylinux-2-28-stdenv.nix {
     inherit system;
-    config.replaceStdenv = { pkgs }:
-      pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
-    overlays = [
+    hostPkgs = host;
+  };
+  targetOverrides = [
       (_final: previous: {
         # makeStaticLibraries does not mark the platform as isStatic, so
         # curl's default feature detection otherwise enables GSS/Kerberos.
@@ -37,14 +50,42 @@ let
         # the incorporated pixman library at the product boundary.
         pixman = previous.pixman.overrideAttrs (old: {
           mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dtests=disabled" ];
+          # Some nixpkgs pixman revisions still enter the test subdirectory
+          # despite the option above when cross-building.  Those test
+          # executables are build-only and pull in host OpenMP/zlib details;
+          # remove the subdirectory explicitly for this static target.
+          postPatch = (old.postPatch or "") + ''
+            sed -i \
+              -e "s/if not get_option('tests').disabled()/if false/" \
+              -e "s/if not get_option('tests').disabled() or not get_option('demos').disabled()/if not get_option('demos').disabled()/" \
+              meson.build
+          '';
         });
         # libXfont2 unconditionally builds an uninstalled lsfontdir test
         # utility. Its static FreeType/Brotli link is incomplete, while the
         # library itself is incorporated into and exercised through Xvfb.
-        libxfont_2 = previous.libxfont_2.overrideAttrs (old: {
+        libXfont2 = previous.libXfont2.overrideAttrs (old: {
           postPatch = (old.postPatch or "") + ''
             substituteInPlace Makefile.in \
               --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
+          '';
+          postConfigure = (old.postConfigure or "") + ''
+            # configure regenerates Makefile from Makefile.am, so enforce the
+            # same omission on the generated files before the static build.
+            find . -name Makefile -type f -exec sed -i \
+              's/noinst_PROGRAMS = lsfontdir/noinst_PROGRAMS =/' {} +
+          '';
+        });
+        # Keep the lowercase nixpkgs compatibility alias on the same patched
+        # derivation; some X.Org packages refer to one spelling or the other.
+        libxfont_2 = previous.libXfont2.overrideAttrs (old: {
+          postPatch = (old.postPatch or "") + ''
+            substituteInPlace Makefile.in \
+              --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
+          '';
+          postConfigure = (old.postConfigure or "") + ''
+            find . -name Makefile -type f -exec sed -i \
+              's/noinst_PROGRAMS = lsfontdir/noinst_PROGRAMS =/' {} +
           '';
         });
         # libffi's checks add DejaGNU/Expect and a build-platform Tcl whose
@@ -59,6 +100,35 @@ let
         # external-Vulkan artifact.
         sqlite = previous.sqlite.overrideAttrs (_old: {
           doCheck = false;
+        });
+        # GDBM is consumed by the Python build toolchain, not incorporated
+        # into Mesa or the final Xvfb binary. Its upstream test executables
+        # assume a conventional host runtime and do not validate this target
+        # library build.
+        gdbm = previous.gdbm.overrideAttrs (_old: {
+          doCheck = false;
+        });
+        # libcap-ng's change_id_test assumes the builder has a conventional
+        # supplementary-group database.  It is a build-time capability test;
+        # libcap-ng is not incorporated into the Mesa/Zink runtime closure.
+        libcap_ng = previous.libcap_ng.overrideAttrs (_old: {
+          doCheck = false;
+        });
+        openssl = previous.openssl.overrideAttrs (_old: {
+          doCheck = false;
+        });
+        # Mesa consumes zstd as a compression library. Do not build zstd's
+        # optional C++ pzstd/contrib program or upstream tests against the
+        # manylinux 2.28 headers; those targets require newer pthread APIs.
+        zstd = (previous.zstd.override {
+          buildContrib = false;
+        }).overrideAttrs (old: {
+          outputs = builtins.filter (output: output != "man") (old.outputs or [ ]);
+          cmakeFlags = (old.cmakeFlags or [ ]) ++ [
+            "-DZSTD_BUILD_CONTRIB=OFF"
+            "-DZSTD_BUILD_PROGRAMS=OFF"
+            "-DZSTD_BUILD_TESTS=OFF"
+          ];
         });
         pythonPackagesExtensions = previous.pythonPackagesExtensions ++ [
           (_pythonFinal: pythonPrevious:
@@ -92,7 +162,7 @@ let
         });
       })
     ];
-  };
+  pkgs = target.extend (builtins.head targetOverrides);
   disabled = pkgs.emptyDirectory;
   noLLVM = pkgs.llvmPackages // {
     llvm = disabled;
@@ -101,7 +171,7 @@ let
     clang-unwrapped = disabled;
     libclc = disabled;
   };
-  mesa = pkgs.mesa.override {
+  mesa = (pkgs.mesa.override {
     galliumDrivers = [ "zink" ];
     vulkanDrivers = [ ];
     vulkanLayers = [ ];
@@ -111,6 +181,7 @@ let
     llvmPackages = noLLVM;
     directx-headers = disabled;
     elfutils = disabled;
+    libunwind = disabled;
     glslang = disabled;
     spirv-tools = disabled;
     spirv-llvm-translator = disabled;
@@ -127,7 +198,33 @@ let
     rustc = disabled;
     rust-bindgen = disabled;
     rust-cbindgen = disabled;
-  };
+  }).overrideAttrs (old: {
+    # The manylinux target headers expose C11 atomics, but Mesa's portability
+    # include path does not include the standard header before using
+    # atomic_bool. Keep this source adjustment local to the Mesa build.
+    postPatch = (old.postPatch or "") + ''
+      sed -i '1i#include <${toolchain.gccAtomicHeader}/include/manylinux-stdatomic.h>' src/util/os_file_notify.c
+    '';
+  });
+  nativeToolPnames = [
+    "meson" "pkg-config-wrapper" "ninja" "intltool" "bison" "flex"
+    "file" "python3" "packaging" "pycparser" "mako" "ply" "pyyaml"
+  ];
+  hostNativeTools = [
+    host.meson
+    host.pkg-config
+    host.ninja
+    host.intltool
+    host.bison
+    host.flex
+    host.file
+    host.python3
+    host.python3Packages.packaging
+    host.python3Packages.pycparser
+    host.python3Packages.mako
+    host.python3Packages.ply
+    host.python3Packages.pyyaml
+  ];
 in
 mesa.overrideAttrs (old: {
   patches = (old.patches or [ ]) ++ [
@@ -135,14 +232,27 @@ mesa.overrideAttrs (old: {
     ./patches/mesa-0003-force-linked-zink.patch
   ];
   outputs = [ "out" ];
+  nativeBuildInputs =
+    (builtins.filter
+      (input: !(builtins.elem (input.pname or "") nativeToolPnames))
+      (old.nativeBuildInputs or [ ]))
+    ++ hostNativeTools;
+  buildInputs = builtins.filter
+    (input: (input.pname or "") != "python3")
+    (old.buildInputs or [ ]);
   preConfigure = (old.preConfigure or "") + ''
     substituteInPlace src/gallium/targets/dri/meson.build \
-      --replace-fail 'libgallium_dri = shared_library(' 'libgallium_dri = library('
+      --replace-fail 'libgallium_dri = shared_library(' 'libgallium_dri = static_library('
+    substituteInPlace src/gallium/targets/dri/meson.build \
+      --replace-fail 'name_suffix : libname_suffix,' ""
     substituteInPlace src/meson.build \
       --replace-fail "    subdir('gallium/targets/dril')" \
       "    message('Skipping unused dynamic dril loader')"
     substituteInPlace src/glx/meson.build \
-      --replace-fail 'libgl = shared_library(' 'libgl = library('
+      --replace-fail 'libgl = shared_library(' 'libgl = static_library('
+    substituteInPlace src/glx/meson.build \
+      --replace-fail 'version : gl_lib_version,' "" \
+      --replace-fail "darwin_versions : '4.0.0'," ""
   '';
   mesonFlags = (old.mesonFlags or [ ]) ++ [
     "-Dauto_features=disabled"
@@ -170,7 +280,7 @@ mesa.overrideAttrs (old: {
     "-Dc_args=-DXVFB_STATIC_EXTERNAL_VULKAN=1"
   ];
   postInstall = ''
-    gallium_archive="$(echo "$out"/lib/libgallium-*.so)"
+    gallium_archive="$(echo "$out"/lib/libgallium-*.a)"
     test -f "$gallium_archive"
     substituteInPlace "$out/lib/pkgconfig/gl.pc" \
       --replace-fail 'Libs.private: -lpthread' \

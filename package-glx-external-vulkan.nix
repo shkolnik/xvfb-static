@@ -1,101 +1,18 @@
 { system ? builtins.currentSystem }:
 let
-  flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs {
-    inherit system;
-    config.replaceStdenv = { pkgs }:
-      pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
-    overlays = [
-      (_final: previous: {
-        # makeStaticLibraries does not mark the platform as isStatic, so
-        # curl's default feature detection otherwise enables GSS/Kerberos.
-        # Curl is build infrastructure here; the artifact neither links nor
-        # needs its Kerberos integration.
-        curlMinimal = previous.curlMinimal.override { gssSupport = false; };
-        curl = previous.curl.override { gssSupport = false; };
-        # CMake's bootstrap script rejects Autoconf's --disable-shared flag.
-        cmakeMinimal = previous.cmakeMinimal.overrideAttrs (old: {
-          dontAddStaticConfigureFlags = true;
-          configureFlags = builtins.filter
-            (flag: flag != "--enable-static" && flag != "--disable-shared")
-            (old.configureFlags or [ ]);
-        });
-        # Build-only consumers here need the CMake generator, not CTest/CPack
-        # or full CMake's static libarchive dependency closure.
-        cmake = previous.cmakeMinimal.overrideAttrs (old: {
-          dontAddStaticConfigureFlags = true;
-          configureFlags = builtins.filter
-            (flag: flag != "--enable-static" && flag != "--disable-shared")
-            (old.configureFlags or [ ]);
-        });
-        libdrm = previous.libdrm.override {
-          withIntel = false;
-          withValgrind = false;
-        };
-        # Pixman's test executables are not incorporated into Xvfb and their
-        # static libpng link omits libz. The packaged GLX render test exercises
-        # the incorporated pixman library at the product boundary.
-        pixman = previous.pixman.overrideAttrs (old: {
-          mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dtests=disabled" ];
-        });
-        # libXfont2 unconditionally builds an uninstalled lsfontdir test
-        # utility. Its static FreeType/Brotli link is incomplete, while the
-        # library itself is incorporated into and exercised through Xvfb.
-        libxfont_2 = previous.libxfont_2.overrideAttrs (old: {
-          postPatch = (old.postPatch or "") + ''
-            substituteInPlace Makefile.in \
-              --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
-          '';
-        });
-        # libffi's checks add DejaGNU/Expect and a build-platform Tcl whose
-        # shared-library assumptions are incompatible with this static stdenv.
-        # The final Xvfb render/readback test exercises the incorporated FFI
-        # path at the product boundary.
-        libffi = previous.libffi.overrideAttrs (_old: {
-          doCheck = false;
-        });
-        # SQLite is pulled in by the Python/Meson build toolchain, not linked
-        # into Xvfb.  Its multi-minute upstream suite does not validate the
-        # external-Vulkan artifact.
-        sqlite = previous.sqlite.overrideAttrs (_old: {
-          doCheck = false;
-        });
-        pythonPackagesExtensions = previous.pythonPackagesExtensions ++ [
-          (_pythonFinal: pythonPrevious:
-            previous.lib.mapAttrs (_name: package:
-              if previous.lib.isDerivation package && package ? overridePythonAttrs
-              then package.overridePythonAttrs (_old: {
-                # These packages are build tooling for Mesa, not runtime
-                # contents. Their upstream suites assume optional dynamic
-                # Python extensions that this static-library environment may
-                # omit. Mesa configuration/compilation and the packaged GLX
-                # render test exercise the relevant behavior instead.
-                doCheck = false;
-                doInstallCheck = false;
-              })
-              else package
-            ) pythonPrevious)
-        ];
-        # The static build cannot dlopen libxml2's shared test module.  The
-        # library and command-line tools still build normally; only that
-        # shared-module-dependent check phase is incompatible with this
-        # package set.
-        libxml2 = previous.libxml2.overrideAttrs (_old: {
-          doCheck = false;
-        });
-        tcl = previous.tcl.overrideAttrs (old: {
-          preFixup = (old.preFixup or "") + ''
-            if [ -f "$out/lib/libtcl8.6.a" ]; then
-              ln -sfn libtcl8.6.a "$out/lib/libtcl.so"
-            fi
-          '';
-        });
-      })
-    ];
-  };
-  hostPkgs = flake.inputs.nixpkgs.legacyPackages.${system};
+  packageSets = import /src/nix/manylinux-2-28-packages.nix { inherit system; };
+  # Target libraries are built by the manylinux compatibility stdenv.  Keep
+  # native executables (build tools and archive assembly) on the ordinary host
+  # package set; this is the only package-set boundary used by this derivation.
+  pkgs = packageSets.targetPkgs;
+  hostPkgs = packageSets.hostPkgs;
+  toolchain = packageSets.toolchain;
   static = hostPkgs.pkgsStatic;
-  mesaZink = import /src/mesa-zink.nix { inherit system; };
+  mesaZink = import /src/mesa-zink.nix {
+    inherit system;
+    targetPkgs = pkgs;
+    hostPkgs = hostPkgs;
+  };
   bzip2Static = pkgs.bzip2.override { enableStatic = true; };
   opensslStatic = (pkgs.openssl.override { static = true; }).overrideAttrs (old: {
     configureFlags = (old.configureFlags or [ ]) ++ [ "no-tests" ];
@@ -108,10 +25,47 @@ let
       substituteInPlace lib/meson.build --replace-fail 'shared_library(' 'library('
     '';
   });
+  # Xvfb's fixed nixpkgs dependency graph can retain the unmodified
+  # libXfont2 derivation even when the package-set overlay replaces the public
+  # attribute.  Patch the exact dependency at the Xvfb boundary as well, so
+  # its uninstalled lsfontdir helper cannot introduce an incomplete Brotli
+  # static link.
+  libxfont2Static = pkgs.libxfont_2.overrideAttrs (old: {
+    postPatch = (old.postPatch or "") + ''
+      substituteInPlace Makefile.in \
+        --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
+    '';
+    postConfigure = (old.postConfigure or "") + ''
+      find . -name Makefile -type f -exec sed -i \
+        's/noinst_PROGRAMS = lsfontdir/noinst_PROGRAMS =/' {} +
+    '';
+  });
+  pixmanStatic = pkgs.pixman.overrideAttrs (old: {
+    mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dtests=disabled" ];
+    postPatch = (old.postPatch or "") + ''
+      sed -i \
+        -e "s/if not get_option('tests').disabled()/if false/" \
+        -e "s/if not get_option('tests').disabled() or not get_option('demos').disabled()/if not get_option('demos').disabled()/" \
+        meson.build
+    '';
+  });
+  valgrindStatic = pkgs.valgrind.overrideAttrs (_old: {
+    # Valgrind is a build-time libdrm check dependency here; its own test
+    # suite expects the host development resolver library and is not shipped.
+    doCheck = false;
+  });
+  libdrmStatic = pkgs.libdrm.override {
+    withIntel = false;
+    withValgrind = false;
+  };
   prepareDependencies = dependencies:
     builtins.filter (dependency: (dependency.pname or "") != "libglvnd")
       (map (dependency:
         if (dependency.pname or "") == "libxcvt" then libxcvtStatic
+        else if (dependency.pname or "") == "libxfont_2" then libxfont2Static
+        else if (dependency.pname or "") == "pixman" then pixmanStatic
+        else if (dependency.pname or "") == "valgrind" then valgrindStatic
+        else if (dependency.pname or "") == "libdrm" then libdrmStatic
         else if (dependency.pname or "") == "openssl" then opensslStatic
         else dependency
       ) dependencies);
@@ -149,12 +103,16 @@ let
       test -s $out/${profile.id}.xkm
     '') profileInputs)}
   '';
-  interpreter = if pkgs.stdenv.hostPlatform.isAarch64
-    then "/lib/ld-linux-aarch64.so.1"
-    else "/lib64/ld-linux-x86-64.so.2";
+  # The package boundary rewrites the build-time sysroot loader to the
+  # deployment path selected by the compatibility stdenv. Keep this single
+  # source of truth rather than duplicating an architecture conditional here.
+  interpreter = toolchain.deploymentLoader;
   xvfbGlx = pkgs.xvfb.overrideAttrs (old: {
     pname = "xvfb-static-glx-external-vulkan";
-    NIX_LDFLAGS = (old.NIX_LDFLAGS or "") + " -lstdc++";
+    # Mesa's pkg-config metadata adds libstdc++ at the final GL/Zink link;
+    # keeping it out of the global compiler probe lets Meson test plain C
+    # programs without forcing a C++ archive into every probe.
+    NIX_LDFLAGS = old.NIX_LDFLAGS or "";
     NIX_CFLAGS_LINK = (old.NIX_CFLAGS_LINK or "") + " -static-libgcc -static-libstdc++";
     buildInputs = prepareDependencies (old.buildInputs or [ ]) ++ [
       pkgs.brotli
@@ -162,7 +120,7 @@ let
       pkgs.freetype
       pkgs.libfontenc
       mesaZink
-      pkgs.libdrm
+      libdrmStatic
       pkgs.libpng
       pkgs.libx11
       pkgs.libxcb
@@ -175,7 +133,7 @@ let
     propagatedBuildInputs =
       prepareDependencies (old.propagatedBuildInputs or [ ]) ++ [ mesaZink ];
     nativeBuildInputs = prepareNativeDependencies (old.nativeBuildInputs or [ ])
-      ++ [ pkgs.patchelf ];
+      ++ [ hostPkgs.patchelf ];
     mesonFlags = map prepareMesonFlag (old.mesonFlags or [ ]) ++ [
       "-Dglx=true"
       "-Dc_link_args=-Wl,--allow-multiple-definition"
@@ -220,7 +178,7 @@ endif" "message('Skipping unshipped Xserver test targets')"
     '';
     postInstall = (old.postInstall or "") + ''
       chmod u+w $out/bin/Xvfb
-      ${pkgs.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
+      ${hostPkgs.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
       patchelf --set-interpreter ${interpreter} --remove-rpath $out/bin/Xvfb
     '';
   });
@@ -237,7 +195,7 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
     hostPkgs.patchelf
     hostPkgs.xz
     hostPkgs.stdenv.cc.bintools
-    pkgs.nukeReferences
+    hostPkgs.nukeReferences
   ];
   passthru = {
     inherit releaseRevision releaseVersion;
@@ -254,7 +212,7 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   mkdir -p $out/bin $out/share/xvfb-static/licenses
   cp ${xvfbGlx}/bin/Xvfb $out/bin/Xvfb
   chmod u+w $out/bin/Xvfb
-  ${pkgs.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
+  ${hostPkgs.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
   patchelf --set-interpreter ${interpreter} --remove-rpath $out/bin/Xvfb
 
   # Static libraries carry build-time resource defaults and discarded linker
@@ -270,12 +228,17 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   test "$(patchelf --print-interpreter $out/bin/Xvfb)" = "${interpreter}"
   test -z "$(patchelf --print-rpath $out/bin/Xvfb)"
   forbidden_strings="$(strings $out/bin/Xvfb |
-    grep -E '/nix/store|libLLVM|LLVM_[0-9]' || true)"
+    grep -E '/nix/store|libLLVM|LLVM_[0-9]|swrast_dri|libGL\\.so|libgallium[^ ]*\\.so' || true)"
   if test -n "$forbidden_strings"; then
-    echo 'xvfb-static: external Vulkan binary contains forbidden Nix-store or LLVM references:' >&2
+    echo 'xvfb-static: external Vulkan binary contains forbidden runtime or LLVM references:' >&2
     printf '%s\n' "$forbidden_strings" >&2
     exit 1
   fi
+  loader_string="$(strings $out/bin/Xvfb | grep -F 'libvulkan.so.1' || true)"
+  test -n "$loader_string" || {
+    echo 'xvfb-static: external Vulkan binary does not contain the host Vulkan loader ABI' >&2
+    exit 1
+  }
 
   glibc_symbol_floor="$(readelf --version-info -W $out/bin/Xvfb |
     sed -n 's/.*Name: GLIBC_\([0-9][0-9.]*\).*/\1/p' |
@@ -364,6 +327,6 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
     --arg glibc_symbol_floor "$glibc_symbol_floor" \
     --argjson files "$files" \
     --argjson keyboard_profiles '${builtins.toJSON profiles}' \
-    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,variant:"glx",maturity:"alpha",renderer:"zink",graphics_backend:"external-vulkan",runtime_model:"host-assisted",target_minimum_host_glibc:"2.31",glibc_symbol_floor:$glibc_symbol_floor,required_graphics_library:"libvulkan.so.1",components:{"xorg-server":$xorg_version,mesa:$mesa_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
+    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,variant:"glx",maturity:"alpha",renderer:"zink",graphics_backend:"external-vulkan",runtime_model:"host-assisted",glibc_symbol_floor:$glibc_symbol_floor,required_graphics_library:"libvulkan.so.1",components:{"xorg-server":$xorg_version,mesa:$mesa_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
     > $out/share/xvfb-static/manifest.json
 ''

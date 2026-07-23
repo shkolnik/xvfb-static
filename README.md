@@ -147,7 +147,9 @@ The external Vulkan alpha build, when enabled in the current checkout, uses an
 equivalently explicit `build-glx-external-vulkan.sh` entry point and writes
 under `out/glx-external-vulkan-alpha/<architecture>/`. Its runtime test must
 run on a glibc distribution with `libvulkan.so.1` and an installed Vulkan ICD;
-the ordinary fully static Alpine contract does not apply to this variant.
+the ordinary fully static Alpine contract does not apply to this variant. The
+smoke test uses a newer Mesa lavapipe runtime only for Zink integration
+coverage; actual-GPU render/readback is still required before publication.
 
 ## Verify a download
 
