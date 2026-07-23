@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: xvfb-static maintainers <noreply@example.com>
+Date: Wed, 22 Jul 2026 00:00:00 +0000
+Subject: [PATCH] rootless: mask privileged mode bits before chmod
+
+Nix builders may not create setuid or setgid files. Rootless extraction does
+not need those privilege-bearing bits, but umoci currently replays them and
+fails before consumers can select an unprivileged subset from an image.
+
+Mask only setuid and setgid, only for rootless on-disk extraction. Preserve
+ordinary permissions, sticky bits, and the complete non-rootless mode.
+---
+ oci/layer/tar_extract.go      | 10 +++++++++-
+ oci/layer/tar_extract_test.go | 40 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 49 insertions(+), 1 deletion(-)
+
+diff --git a/oci/layer/tar_extract.go b/oci/layer/tar_extract.go
+index 82ee03a..86a72a1 100644
+--- a/oci/layer/tar_extract.go
++++ b/oci/layer/tar_extract.go
+@@ -121,0 +122,7 @@ func NewTarExtractor(opt *TarExtractorOptions) *TarExtractor {
++func modeForUnpack(mode os.FileMode, rootless bool) os.FileMode {
++	if rootless {
++		mode &^= os.ModeSetuid | os.ModeSetgid
++	}
++	return mode
++}
++
+@@ -150 +157,2 @@ func (te *TarExtractor) restoreMetadata(path string, hdr *tar.Header) error {
+-		if err := te.fsEval.Chmod(path, fi.Mode()); err != nil {
++		mode := modeForUnpack(fi.Mode(), te.onDiskFmt.Map().Rootless)
++		if err := te.fsEval.Chmod(path, mode); err != nil {
+diff --git a/oci/layer/tar_extract_test.go b/oci/layer/tar_extract_test.go
+index 3990aad..d61ad2d 100644
+--- a/oci/layer/tar_extract_test.go
++++ b/oci/layer/tar_extract_test.go
+@@ -41,0 +42,40 @@ import (
++func TestModeForUnpack(t *testing.T) {
++	tests := []struct {
++		name     string
++		mode     os.FileMode
++		rootless bool
++		want     os.FileMode
++	}{
++		{
++			name: "rootless ordinary mode",
++			mode: 0o755, rootless: true, want: 0o755,
++		},
++		{
++			name: "rootless setuid",
++			mode: os.ModeSetuid | 0o755, rootless: true, want: 0o755,
++		},
++		{
++			name: "rootless setgid",
++			mode: os.ModeSetgid | 0o755, rootless: true, want: 0o755,
++		},
++		{
++			name: "rootless sticky",
++			mode: os.ModeSticky | 0o777, rootless: true, want: os.ModeSticky | 0o777,
++		},
++		{
++			name: "non-rootless setuid",
++			mode: os.ModeSetuid | 0o755, rootless: false, want: os.ModeSetuid | 0o755,
++		},
++		{
++			name: "non-rootless setgid",
++			mode: os.ModeSetgid | 0o755, rootless: false, want: os.ModeSetgid | 0o755,
++		},
++	}
++
++	for _, test := range tests {
++		t.Run(test.name, func(t *testing.T) {
++			assert.Equal(t, test.want, modeForUnpack(test.mode, test.rootless))
++		})
++	}
++}
++
