@@ -67,17 +67,19 @@ Published GitHub Releases will contain:
 - `xvfb-static-linux-aarch64.tar.gz`
 - `xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz`
 - `xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz`
+- `xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz`
+- `xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz`
 - `SHA256SUMS`
 
-`xvfb-static-glx-external-vulkan-alpha-linux-<arch>.tar.gz` is reserved for
-the host-assisted prototype and is intentionally excluded from this release
-list until its two-architecture hardware gate passes.
+The external Vulkan archives are host-assisted alpha artifacts. They require a
+glibc host with `libvulkan.so.1` and a compatible ICD; their release smoke test
+proves Zink/Vulkan integration with lavapipe, not actual-GPU execution.
 
 Each archive contains `bin/Xvfb`, a machine-readable manifest, and the exact
 third-party license texts applicable to the binary. GLX manifests additionally
-declare `"variant": "glx"`, `"maturity": "alpha"`, and
-`"renderer": "llvmpipe"` so the experimental status survives renaming or
-extraction of the archive.
+declare `"variant": "glx"`, `"maturity": "alpha"`, and the renderer
+(`"llvmpipe"` or `"zink"`) so the experimental status and backend survive
+renaming or extraction of the archive.
 
 ## Versions and releases
 
@@ -103,12 +105,14 @@ atomically pushes `main` and the tag to GitHub. In a terminal it previews the
 version and requires confirmation. Use `./release.sh --dry-run` to preview
 without changing files, commits, tags, or remote branches.
 
-Pushing a matching tag builds and smoke-tests the standard and GLX llvmpipe alpha
-variants for x86_64 and aarch64 on native GitHub-hosted runners. The GLX tests
-create an indirect context with llvmpipe, render two colors, and read pixels
-back for verification. If all four artifacts match the tag and pass, the
-workflow publishes them with a combined `SHA256SUMS` file as an immutable
-GitHub Release. Every archive receives a signed build-provenance attestation.
+Pushing a matching tag builds and smoke-tests the standard, GLX llvmpipe alpha,
+and GLX external Vulkan alpha variants for x86_64 and aarch64 on native
+GitHub-hosted runners. The GLX tests render and read pixels back for
+verification; the external Vulkan test uses lavapipe for integration coverage
+and does not establish actual-GPU support. If all six artifacts match the tag
+and pass, the workflow publishes them with a combined `SHA256SUMS` file as an
+immutable GitHub Release. Every archive receives a signed build-provenance
+attestation.
 The exact Nixpkgs revision remains recorded separately in `flake.lock` and the
 release notes.
 
