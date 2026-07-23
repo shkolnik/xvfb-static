@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 remote="origin"
 branch="main"
-image="nixos/nix@sha256:377d4887aca98f0dfa12971c1ea6d6a625a435d8b610d4c95a436843da6fbfd1"
+image="nixos/nix@sha256:22c0a3a816eb3d315eb6720d2a58a3c3b622c9717c578f3c80b687668c6da277"
 dry_run=false
 
 if [[ "${1:-}" == "--dry-run" && $# -eq 1 ]]; then
@@ -159,7 +159,7 @@ if [[ "$evaluated_version" != "$release_version" ]]; then
   exit 1
 fi
 
-bash -n build.sh build-glx.sh test/smoke.sh test/glx-smoke.sh release.sh
+bash -n build.sh build-glx-llvmpipe.sh test/smoke.sh test/glx-llvmpipe-smoke.sh release.sh
 git diff --check
 if [[ -n "$(git status --short)" ]]; then
   echo "release preparation left unexpected worktree changes" >&2

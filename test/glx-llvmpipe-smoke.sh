@@ -10,7 +10,7 @@ if [[ -z "$archive" ]]; then
     aarch64|arm64) arch="aarch64" ;;
     *) echo "unsupported host architecture: $(uname -m)" >&2; exit 2 ;;
   esac
-  archive="$root/out/glx-alpha/$arch/xvfb-static-glx-alpha-linux-$arch.tar.gz"
+  archive="$root/out/glx-llvmpipe-alpha/$arch/xvfb-static-glx-llvmpipe-alpha-linux-$arch.tar.gz"
 fi
 
 test -s "$archive" || { echo "missing archive: $archive" >&2; exit 1; }
@@ -45,4 +45,4 @@ docker run --name "$name" --rm \
     trap - EXIT
   '
 
-echo "xvfb-static GLX alpha render smoke test passed"
+echo "xvfb-static GLX llvmpipe alpha render smoke test passed"

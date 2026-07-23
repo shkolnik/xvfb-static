@@ -5,6 +5,58 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int ascii_tolower(int value)
+{
+    if (value >= 'A' && value <= 'Z')
+        return value + ('a' - 'A');
+    return value;
+}
+
+static int contains_case_insensitive(const char *text, const char *needle,
+                                     size_t needle_length)
+{
+    const char *candidate;
+    size_t index;
+
+    if (needle_length == 0)
+        return 1;
+
+    for (candidate = text; *candidate != '\0'; candidate++) {
+        for (index = 0; index < needle_length; index++) {
+            if (candidate[index] == '\0' ||
+                ascii_tolower((unsigned char)candidate[index]) !=
+                    ascii_tolower((unsigned char)needle[index]))
+                break;
+        }
+        if (index == needle_length)
+            return 1;
+    }
+    return 0;
+}
+
+static int contains_rejected_renderer(const char *renderer, const char *list)
+{
+    const char *entry = list;
+
+    while (*entry != '\0') {
+        const char *end = strchr(entry, ',');
+        size_t length = end == NULL ? strlen(entry) : (size_t)(end - entry);
+
+        while (length > 0 && (*entry == ' ' || *entry == '\t')) {
+            entry++;
+            length--;
+        }
+        while (length > 0 && (entry[length - 1] == ' ' || entry[length - 1] == '\t'))
+            length--;
+        if (length > 0 && contains_case_insensitive(renderer, entry, length))
+            return 1;
+        if (end == NULL)
+            break;
+        entry = end + 1;
+    }
+    return 0;
+}
+
 static int fail(const char *message)
 {
     fprintf(stderr, "glx-render-test: %s\n", message);
@@ -58,10 +110,16 @@ int main(void)
     fprintf(stderr, "step: glGetString\n");
     const char *renderer = (const char *)glGetString(GL_RENDERER);
     const char *expected_renderer = getenv("XVFB_STATIC_EXPECT_RENDERER");
+    const char *rejected_renderers = getenv("XVFB_STATIC_REJECT_RENDERERS");
     if (expected_renderer == NULL)
         expected_renderer = "llvmpipe";
-    if (renderer == NULL || strstr(renderer, expected_renderer) == NULL)
+    if (renderer == NULL ||
+        !contains_case_insensitive(renderer, expected_renderer,
+                                   strlen(expected_renderer)))
         return fail("GL_RENDERER does not identify the expected renderer");
+    if (rejected_renderers != NULL &&
+        contains_rejected_renderer(renderer, rejected_renderers))
+        return fail("GL_RENDERER identifies a forbidden renderer");
 
     fprintf(stderr, "step: render\n");
     glViewport(0, 0, 64, 64);

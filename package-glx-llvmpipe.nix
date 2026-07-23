@@ -39,7 +39,7 @@ let
     '') profileInputs)}
   '';
   xvfbGlx = static.xvfb.overrideAttrs (old: {
-  pname = "xvfb-static-glx";
+  pname = "xvfb-static-glx-llvmpipe";
   NIX_LDFLAGS = (old.NIX_LDFLAGS or "") + " -lstdc++";
   buildInputs = prepareDependencies (old.buildInputs or [ ]) ++ [
     mesaLLVMpipe
@@ -57,7 +57,7 @@ let
     /src/patches/xserver-0002-embedded-keymap.patch
     /src/patches/xserver-0003-keyboard-profile-option.patch
     /src/patches/xserver-0004-component-log-prefixes.patch
-    /src/patches/xserver-0003-linked-swrast.patch
+    /src/patches/xserver-0004-linked-swrast.patch
   ];
   postPatch = (old.postPatch or "") + ''
     substituteInPlace hw/vfb/meson.build \
@@ -95,7 +95,7 @@ let
     static.stdenv.cc.bintools
   ];
 in
-static.runCommand "xvfb-static-glx-alpha-${releaseVersion}" {
+static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
   inherit nativeBuildInputs;
   passthru = {
     inherit releaseRevision releaseVersion;
@@ -104,6 +104,9 @@ static.runCommand "xvfb-static-glx-alpha-${releaseVersion}" {
     llvmVersion = targetLLVM.version;
     variant = "glx";
     maturity = "alpha";
+    renderer = "llvmpipe";
+    graphicsBackend = "embedded";
+    runtimeModel = "fully-static";
   };
 } ''
   set -euo pipefail
@@ -192,6 +195,6 @@ static.runCommand "xvfb-static-glx-alpha-${releaseVersion}" {
     --arg llvm_version "${targetLLVM.version}" \
     --argjson files "$files" \
     --argjson keyboard_profiles '${builtins.toJSON profiles}' \
-    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,variant:"glx",maturity:"alpha",renderer:"llvmpipe",components:{"xorg-server":$xorg_version,mesa:$mesa_version,llvm:$llvm_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
+    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,variant:"glx",maturity:"alpha",renderer:"llvmpipe",graphics_backend:"embedded",runtime_model:"fully-static",components:{"xorg-server":$xorg_version,mesa:$mesa_version,llvm:$llvm_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
     > $out/share/xvfb-static/manifest.json
 ''

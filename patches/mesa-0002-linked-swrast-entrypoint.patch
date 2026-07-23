@@ -10,7 +10,7 @@ Mesa's internal DRI frontend.  This keeps llvmpipe inside the executable.
 
 Maintenance: this bridges public DRI layouts to version-sensitive internal
 callbacks. Review their signatures after Mesa updates. This is the provider
-half of `xserver-0003-linked-swrast.patch`; keep the pair compatible and rerun
+half of `xserver-0004-linked-swrast.patch`; keep the pair compatible and rerun
 the packaged llvmpipe render/readback test after either changes.
 
 diff --git a/src/gallium/targets/dri/dri_target.c b/src/gallium/targets/dri/dri_target.c
@@ -25,7 +25,7 @@ diff --git a/src/gallium/targets/dri/dri_target.c b/src/gallium/targets/dri/dri_
 +#include "dri_screen.h"
 +#include "dri_util.h"
 +
-+#if defined(GALLIUM_LLVMPIPE) || defined(GALLIUM_SOFTPIPE)
++#if defined(GALLIUM_LLVMPIPE) || defined(GALLIUM_SOFTPIPE) || defined(GALLIUM_ZINK)
 +
 +/*
 + * Mesa 24.2 replaced the legacy X server DRI entrypoint with dril, a stub
