@@ -105,7 +105,7 @@ let
 
     phase=copy-development
     copy_matches "$root/usr/lib64" "$dev/lib64" \
-      'crt*.o' 'libc.so' 'libm.so' 'libmvec.so' \
+      'crt*.o' 'Scrt1.o' 'libc.so' 'libm.so' 'libmvec.so' \
       'libpthread.so' 'libdl.so' 'librt.so'
 
     phase=copy-static
@@ -237,6 +237,8 @@ let
       "$dev/include/features.h"
     phase=assert-crt1
     test -s "$dev/lib64/crt1.o"
+    phase=assert-pie-crt1
+    test -s "$dev/lib64/Scrt1.o"
     phase=assert-crti
     test -s "$dev/lib64/crti.o"
     phase=assert-crtn
