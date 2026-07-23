@@ -9,6 +9,10 @@
 let
   lock = import ./manylinux-2-28-images.nix { inherit system; };
   outputs = [ "out" "dev" "static" ];
+  expectedLoader =
+    if system == "x86_64-linux" then "ld-linux-x86-64.so.2"
+    else if system == "aarch64-linux" then "ld-linux-aarch64.so.1"
+    else throw "manylinux-2-28-sysroot: unsupported system ${system}";
   image = hostPkgs.dockerTools.pullImage {
     imageName = lock.imageName;
     imageDigest = lock.imageDigest;
@@ -35,7 +39,6 @@ let
       hostPkgs.gnugrep
       hostPkgs.gnused
       hostPkgs.gnutar
-      hostPkgs.patchelf
       hostPkgs.skopeo
       patchedUmoci
     ];
@@ -241,8 +244,7 @@ let
     phase=assert-libc-nonshared
     test -s "$static/lib64/libc_nonshared.a"
     phase=assert-loader
-    test -e "$out/lib64/ld-linux-x86-64.so.2" -o \
-         -e "$out/lib64/ld-linux-aarch64.so.1"
+    test -e "$out/lib64/${expectedLoader}"
 
     phase=audit-linker-script-host-paths
     for script in "$dev/lib64"/*.so; do
@@ -316,6 +318,7 @@ let
     phase=complete
   '';
 in
+assert expectedLoader != "";
 assert sysroot.outputs == outputs;
 assert sysroot.imageDigest == lock.imageDigest;
 assert sysroot.policy == "manylinux_2_28";
