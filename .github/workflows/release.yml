@@ -80,7 +80,7 @@ jobs:
           CACHIX_CACHE_NAME: xvfb-static
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
           CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
-      - if: matrix.variant == 'glx-llvmpipe'
+      - if: matrix.variant == 'glx-llvmpipe' || matrix.variant == 'glx-external-vulkan'
         name: Build GLX render test
         env:
           CACHIX_CACHE_NAME: xvfb-static
