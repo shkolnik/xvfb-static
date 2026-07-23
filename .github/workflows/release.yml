@@ -43,6 +43,16 @@ jobs:
             variant: glx-llvmpipe
             artifact: xvfb-static-glx-llvmpipe-alpha-linux-aarch64
             archive: out/glx-llvmpipe-alpha/aarch64/xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz
+          - arch: x86_64
+            runner: ubuntu-24.04
+            variant: glx-external-vulkan
+            artifact: xvfb-static-glx-external-vulkan-alpha-linux-x86_64
+            archive: out/glx-external-vulkan-alpha/x86_64/xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            variant: glx-external-vulkan
+            artifact: xvfb-static-glx-external-vulkan-alpha-linux-aarch64
+            archive: out/glx-external-vulkan-alpha/aarch64/xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -54,6 +64,12 @@ jobs:
           CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
       - if: matrix.variant == 'glx-llvmpipe'
         run: ./build-glx-llvmpipe.sh "${{ matrix.arch }}"
+        env:
+          CACHIX_CACHE_NAME: xvfb-static
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
+      - if: matrix.variant == 'glx-external-vulkan'
+        run: ./build-glx-external-vulkan.sh "${{ matrix.arch }}"
         env:
           CACHIX_CACHE_NAME: xvfb-static
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -93,6 +109,8 @@ jobs:
       - run: ./test/smoke.sh "${{ matrix.archive }}"
       - if: matrix.variant == 'glx-llvmpipe'
         run: ./test/glx-llvmpipe-smoke.sh "${{ matrix.archive }}"
+      - if: matrix.variant == 'glx-external-vulkan'
+        run: ./test/glx-external-vulkan-smoke.sh "${{ matrix.archive }}"
       - name: Attest release archive
         uses: actions/attest@v4
         with:
@@ -161,6 +179,22 @@ jobs:
               echo "$llvmpipe_archive contains X.Org Server $llvmpipe_upstream, but tag $tag declares $upstream_version" >&2
               exit 1
             fi
+
+            external_vulkan_archive="dist/xvfb-static-glx-external-vulkan-alpha-linux-$arch.tar.gz"
+            test -s "$external_vulkan_archive"
+            external_vulkan_manifest="$(tar -xOf "$external_vulkan_archive" share/xvfb-static/manifest.json)"
+            external_vulkan_release="$(jq -er '.version' <<<"$external_vulkan_manifest")"
+            external_vulkan_upstream="$(jq -er '.components["xorg-server"]' <<<"$external_vulkan_manifest")"
+            jq -e '.variant == "glx" and .maturity == "alpha" and .renderer == "zink"' \
+              <<<"$external_vulkan_manifest" >/dev/null
+            if [[ "$external_vulkan_release" != "$release_version" ]]; then
+              echo "$external_vulkan_archive declares release $external_vulkan_release, but tag $tag declares $release_version" >&2
+              exit 1
+            fi
+            if [[ "$external_vulkan_upstream" != "$upstream_version" ]]; then
+              echo "$external_vulkan_archive contains X.Org Server $external_vulkan_upstream, but tag $tag declares $upstream_version" >&2
+              exit 1
+            fi
           done
 
           (
@@ -169,7 +203,9 @@ jobs:
               xvfb-static-linux-x86_64.tar.gz \
               xvfb-static-linux-aarch64.tar.gz \
               xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz \
-              xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz > SHA256SUMS
+              xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz \
+              xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz \
+              xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz > SHA256SUMS
           )
 
           nixpkgs_revision="$(jq -er '.nodes.nixpkgs.locked.rev' flake.lock)"
@@ -178,8 +214,10 @@ jobs:
             printf -- '- x86_64: built and boot-tested on a native GitHub-hosted runner\n'
             printf -- '- aarch64: built and boot-tested on a native GitHub-hosted runner\n'
             printf -- '- standard and GLX llvmpipe alpha archives were built and tested for both architectures\n'
+            printf -- '- GLX external Vulkan alpha archives were built and smoke-tested for both architectures\n'
             printf -- '- GLX llvmpipe alpha uses Mesa llvmpipe software rendering and is experimental\n'
-            printf -- '- all four archives have GitHub build-provenance attestations\n'
+            printf -- '- GLX external Vulkan alpha uses host-assisted Mesa Zink/Vulkan rendering and is experimental; this workflow does not prove actual-GPU execution\n'
+            printf -- '- all six archives have GitHub build-provenance attestations\n'
             printf -- '- nixpkgs revision: `%s`\n' "$nixpkgs_revision"
             printf -- '- source commit: `%s`\n\n' "$GITHUB_SHA"
             printf 'This build embeds 28 curated keyboard profiles. `us` is the default; select another at startup with `-keyboard PROFILE`. Arbitrary layouts and live switching are unsupported.\n'
@@ -193,6 +231,8 @@ jobs:
             dist/xvfb-static-linux-aarch64.tar.gz \
             dist/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz \
             dist/xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz \
+            dist/xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz \
+            dist/xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz \
             dist/SHA256SUMS \
             --verify-tag \
             --title "xvfb-static $GITHUB_REF_NAME" \
