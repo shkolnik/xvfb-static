@@ -68,7 +68,7 @@ let
       ''}
     '';
   });
-  releaseRevision = 2;
+  releaseRevision = 3;
   releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
   nativeBuildInputs = [ gnutar gzip jq stdenv.cc.bintools ];
   strip = "${stdenv.cc.targetPrefix}strip";
