@@ -64,9 +64,14 @@ The archive itself is deterministic given the same declared inputs:
 - the build container is pinned by digest;
 - tar entries use byte-order sorting;
 - owner and group are fixed to numeric zero;
-- timestamps are fixed by `tar --mtime=@315532800` in each build entry point
-  (there is no `SOURCE_DATE_EPOCH` variable in this repository; if you add one,
-  update this line rather than assuming it already works);
+- timestamps are fixed by `tar --mtime=@315532800`, defined once as
+  `XVFB_STATIC_MTIME` in `build-common.sh` (there is no `SOURCE_DATE_EPOCH`
+  variable in this repository; if you add one, update this line rather than
+  assuming it already works);
+- file modes are set explicitly with `install -m 0755` and `install -m 0644`,
+  not inherited through `cp`. `cp` takes the source mode masked by the caller's
+  umask, so the base archive's bytes used to depend on the umask inside the
+  build container;
 - the resulting archive receives a SHA-256 checksum.
 
 The GLX variants preserve the one-executable package shape but have distinct
@@ -182,6 +187,7 @@ Every tracked file appears below. If you add one, add a row.
 | `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded. |
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
 | `nix/extract-license.sh` | The one hardened license extractor, interpolated into all three package derivations. |
+| `nix/keymap-catalog.nix` | The one keymap generator: resolves each profile tuple into XKB includes, compiles the `.xkm` blobs, and emits the embedded-header snippet. Throws on a tuple it has no mapping for. |
 | `build-image.txt` | The single source of truth for the digest-pinned `nixos/nix` build container. Every script and workflow reads it. |
 
 ### manylinux_2_28 compatibility toolchain
@@ -221,6 +227,7 @@ to their named upstreams. See section 7 for ordering rules.
 
 | Path | Purpose |
 |---|---|
+| `build-common.sh` | Sourced by all three build entry points: the pinned image, the cache volume name, the fixed archive timestamp, the architecture resolver, and the build-and-package body. |
 | `build.sh` | Docker-only entry point and reproducible archive/checksum assembly for the base variant. |
 | `build-glx-llvmpipe.sh` | Deterministic llvmpipe GLX alpha archive entry point. |
 | `build-glx-external-vulkan.sh` | Deterministic external Vulkan GLX alpha archive entry point. |
