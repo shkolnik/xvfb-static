@@ -116,36 +116,7 @@ static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
   chmod u+w $out/bin/Xvfb
   ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
 
-  extract_license() {
-    src="$1"; rel="$2"; dest="$3"
-    if [ -d "$src" ]; then
-      test -s "$src/$rel"
-      cp "$src/$rel" "$dest"
-    else
-      matches="$(tar -tf "$src" | while IFS= read -r member; do
-        # Treat rel as relative to the source root. Release archives commonly
-        # wrap that root in one directory, but nested files with the same
-        # basename (notably GCC's several COPYING3 files) are not equivalent.
-        case "$member" in
-          "$rel") printf '%s\n' "$member" ;;
-          */"$rel")
-            prefix="''${member%/"$rel"}"
-            case "$prefix" in
-              */*) ;;
-              *) printf '%s\n' "$member" ;;
-            esac
-            ;;
-        esac
-      done)"
-      match_count="$(printf '%s\n' "$matches" | awk 'NF { count++ } END { print count + 0 }')"
-      if [ "$match_count" -ne 1 ]; then
-        echo "xvfb-static: expected exactly one $rel in $src, found $match_count" >&2
-        exit 1
-      fi
-      tar -xf "$src" -O "$matches" > "$dest"
-      test -s "$dest"
-    fi
-  }
+  ${builtins.readFile ./nix/extract-license.sh}
 
   L=$out/share/xvfb-static/licenses
   extract_license ${static.xorg-server.src} COPYING $L/xorg-server.COPYING

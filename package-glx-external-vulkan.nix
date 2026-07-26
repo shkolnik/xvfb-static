@@ -262,36 +262,7 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
     esac
   done <<< "$needed"
 
-  extract_license() {
-    src="$1"; rel="$2"; dest="$3"
-    if [ -d "$src" ]; then
-      test -s "$src/$rel"
-      cp "$src/$rel" "$dest"
-    else
-      matches="$(tar -tf "$src" | while IFS= read -r member; do
-        # Treat rel as relative to the source root. Release archives commonly
-        # wrap that root in one directory, but nested files with the same
-        # basename (notably GCC's several COPYING3 files) are not equivalent.
-        case "$member" in
-          "$rel") printf '%s\n' "$member" ;;
-          */"$rel")
-            prefix="''${member%/"$rel"}"
-            case "$prefix" in
-              */*) ;;
-              *) printf '%s\n' "$member" ;;
-            esac
-            ;;
-        esac
-      done)"
-      match_count="$(printf '%s\n' "$matches" | awk 'NF { count++ } END { print count + 0 }')"
-      test "$match_count" -eq 1 || {
-        echo "xvfb-static: expected exactly one $rel in $src, found $match_count" >&2
-        exit 1
-      }
-      tar -xf "$src" -O "$matches" > "$dest"
-      test -s "$dest"
-    fi
-  }
+  ${builtins.readFile ./nix/extract-license.sh}
 
   L=$out/share/xvfb-static/licenses
   extract_license ${pkgs.xorg-server.src} COPYING $L/xorg-server.COPYING

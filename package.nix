@@ -84,18 +84,7 @@ in runCommand "xvfb-static-${releaseVersion}" {
   cp ${xvfbPatched}/bin/Xvfb $out/bin/Xvfb
   chmod u+w $out/bin/Xvfb
   ${strip} --strip-all $out/bin/Xvfb
-  extract_license() {
-    src="$1"; rel="$2"; dest="$3"
-    if [ -d "$src" ]; then
-      test -s "$src/$rel"
-      cp "$src/$rel" "$dest"
-    else
-      matches="$(tar -tf "$src" --wildcards "*/$rel")"
-      test "$(printf '%s\n' "$matches" | grep -c .)" -eq 1
-      tar -xf "$src" -O "$matches" > "$dest"
-      test -s "$dest"
-    fi
-  }
+  ${builtins.readFile ./nix/extract-license.sh}
   L=$out/share/xvfb-static/licenses
   extract_license ${xorg-server.src} COPYING $L/xorg-server.COPYING
   extract_license ${xkbcomp.src} COPYING $L/xkbcomp.COPYING
