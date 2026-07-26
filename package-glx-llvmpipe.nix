@@ -57,7 +57,7 @@ let
     /src/patches/xserver-0002-embedded-keymap.patch
     /src/patches/xserver-0003-keyboard-profile-option.patch
     /src/patches/xserver-0004-component-log-prefixes.patch
-    /src/patches/xserver-0004-linked-swrast.patch
+    /src/patches/xserver-0005-linked-swrast.patch
   ];
   postPatch = (old.postPatch or "") + ''
     substituteInPlace hw/vfb/meson.build \
