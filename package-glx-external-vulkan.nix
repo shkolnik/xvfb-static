@@ -98,9 +98,21 @@ let
   interpreter = toolchain.deploymentLoader;
   xvfbGlx = pkgs.xvfb.overrideAttrs (old: {
     pname = "xvfb-static-glx-external-vulkan";
-    # Mesa's pkg-config metadata adds libstdc++ at the final GL/Zink link;
-    # keeping it out of the global compiler probe lets Meson test plain C
-    # programs without forcing a C++ archive into every probe.
+    # Unlike the llvmpipe variant, this one deliberately does NOT append
+    # -lstdc++ to NIX_LDFLAGS. Mesa's pkg-config metadata adds libstdc++ at the
+    # final GL/Zink link, and keeping it out of the global linker flags lets
+    # Meson probe plain C programs without forcing a C++ archive into every
+    # probe. The C++ runtime is pulled in statically at link time instead.
+    #
+    # The assignment below reads as a no-op and nearly is: it sets NIX_LDFLAGS
+    # to its own value. It is retained deliberately. pkgs.xvfb carries no
+    # NIX_LDFLAGS attribute, so `or ""` defines the variable as empty rather
+    # than leaving it undefined, and dropping the line changes this
+    # derivation's hash. cc-wrapper treats empty and undefined identically, so
+    # the built bytes would not change -- but proving that costs a full Mesa
+    # and manylinux rebuild, and there is nothing to gain by spending it. If
+    # you are already rebuilding this variant for another reason, delete the
+    # line then and compare the archive checksum.
     NIX_LDFLAGS = old.NIX_LDFLAGS or "";
     NIX_CFLAGS_LINK = (old.NIX_CFLAGS_LINK or "") + " -static-libgcc -static-libstdc++";
     buildInputs = prepareDependencies (old.buildInputs or [ ]) ++ [

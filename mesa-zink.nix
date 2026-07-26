@@ -162,7 +162,11 @@ let
         });
       })
     ];
-  pkgs = target.extend (builtins.head targetOverrides);
+  # Apply every overlay in the list. This was `builtins.extend (builtins.head
+  # targetOverrides)`, which silently ignored anything after the first -- a
+  # trap for whoever adds the second one.
+  pkgs = builtins.foldl' (accumulated: overlay: accumulated.extend overlay)
+    target targetOverrides;
   disabled = pkgs.emptyDirectory;
   noLLVM = pkgs.llvmPackages // {
     llvm = disabled;

@@ -669,6 +669,21 @@ In priority order:
    static closure and complement, not replace, license texts. This and gap 1
    want the same closure-walking machinery; build it once.
 
+5. **Close two test-coverage asymmetries.** Both are known and both need a
+   full GLX rebuild to verify, which is why they are listed rather than done:
+
+   - `test/glx-render.nix` hardcodes `mesa-llvmpipe.nix`, but both GLX jobs
+     build it — so the external Vulkan job, whose whole point is carrying no
+     LLVM, builds LLVM and llvmpipe to produce its render client. Indirect GLX
+     means the client's backend barely matters, so this is waste rather than
+     incorrectness, but the client under test is not built with the toolchain
+     the artifact uses. Parameterize it by backend.
+   - The external Vulkan artifact gets no `-keyboard` coverage. It cannot run
+     `test/smoke.sh`, which holds the profile-selection assertions and their
+     failure paths, and `test/glx-external-vulkan-smoke.sh` does not repeat
+     them. It already boots Xvfb inside Debian, so the assertions can be added
+     there; do it while you have a built archive to test against.
+
 Closed, and kept here so the record is not re-opened by accident:
 
 - **First clean builds** (was gap 1). Four release tags exist, `v21.1.23-r1`
