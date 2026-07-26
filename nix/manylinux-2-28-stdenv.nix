@@ -21,12 +21,17 @@ let
   # the Nix build. They cannot use the deployment path because that loader is
   # intentionally absent from the build sandbox. Final artifacts are rewritten
   # to deploymentLoader at their package boundary.
+  # Both of these fell through to the aarch64 answer for an unsupported system,
+  # unlike deploymentLoader above, which throws. A silently wrong loader or
+  # triplet fails much later and much less legibly than a thrown message here.
   buildLoader =
     if system == "x86_64-linux" then "${sysroot.out}/lib64/ld-linux-x86-64.so.2"
-    else "${sysroot.out}/lib64/ld-linux-aarch64.so.1";
+    else if system == "aarch64-linux" then "${sysroot.out}/lib64/ld-linux-aarch64.so.1"
+    else throw "manylinux-2-28-stdenv: unsupported system ${system}";
   targetTriplet =
     if system == "x86_64-linux" then "x86_64-unknown-linux-gnu"
-    else "aarch64-unknown-linux-gnu";
+    else if system == "aarch64-linux" then "aarch64-unknown-linux-gnu"
+    else throw "manylinux-2-28-stdenv: unsupported system ${system}";
   # The host GCC is intentionally retained as the modern compiler, but its
   # stock libstdc++ headers describe the host glibc and enable pthread APIs
   # newer than the manylinux sysroot.  Keep the complete header set while
