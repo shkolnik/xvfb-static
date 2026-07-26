@@ -3,3 +3,7 @@
 /result-*
 .DS_Store
 
+# release.sh writes its rewrite of package.nix here; a killed run can leave one
+# behind, and an untracked stray would confuse the worktree-clean guard.
+/.package.nix.release.*
+
