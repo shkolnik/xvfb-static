@@ -15,7 +15,8 @@ case "$arch" in
 esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-image="nixos/nix@sha256:22c0a3a816eb3d315eb6720d2a58a3c3b622c9717c578f3c80b687668c6da277"
+# Single source of truth for the pinned build container; see build-image.txt.
+image="$(cat "$root/build-image.txt")"
 uid="$(id -u)"
 gid="$(id -g)"
 output="$root/out/glx-external-vulkan-alpha/$arch"

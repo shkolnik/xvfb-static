@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-nix_image='nixos/nix@sha256:22c0a3a816eb3d315eb6720d2a58a3c3b622c9717c578f3c80b687668c6da277'
+nix_image="$(cat "$repo_root/build-image.txt")"
 
 prefetch_lock() {
   local arch=$1

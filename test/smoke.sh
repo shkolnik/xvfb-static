@@ -36,7 +36,7 @@ cleanup() {
 trap cleanup EXIT
 tar -xzf "$archive" -C "$tmp"
 file "$tmp/bin/Xvfb" | grep -q 'statically linked'
-docker run --name "$name" --rm -v "$tmp":/package:ro alpine:3.20 sh -eu -c '
+docker run --name "$name" --rm -v "$tmp":/package:ro alpine:3.22 sh -eu -c '
   boot() {
     display="$1"; shift
     /package/bin/Xvfb ":$display" "$@" -screen 0 1280x1024x24 -nolisten tcp -fp built-ins >"/tmp/xvfb-$display.log" 2>&1 &
