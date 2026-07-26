@@ -6,7 +6,12 @@ let
   static = pkgs.pkgsStatic;
   mesaLLVMpipe = import ./mesa-llvmpipe.nix { inherit system pkgs; };
   targetLLVM = mesaLLVMpipe.targetLLVM;
-  profiles = import ./keyboard-profiles.nix;
+  catalog = import ./nix/keymap-catalog.nix {
+    inherit (pkgs) lib;
+    inherit (static) runCommand xkbcomp xkeyboard_config;
+    name = "xvfb-static-glx-keymaps";
+  };
+  profiles = catalog.profiles;
   libxcvtStatic = static.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -18,27 +23,6 @@ let
       (map (dependency:
         if (dependency.pname or "") == "libxcvt" then libxcvtStatic else dependency
       ) dependencies);
-  profileInputs = map (profile: profile // {
-    symbolInclude = profile.layout + (if profile.variant == "" then "" else "(${profile.variant})");
-  }) profiles;
-  keymapBlobs = static.runCommand "xvfb-static-glx-keymaps" {
-    nativeBuildInputs = [ static.xkbcomp ];
-  } ''
-    mkdir -p $out
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      cat > ${profile.id}.xkb <<'EOF'
-      xkb_keymap "${profile.id}" {
-        xkb_keycodes { include "evdev+aliases(qwerty)" };
-        xkb_types { include "complete" };
-        xkb_compatibility { include "complete" };
-        xkb_symbols { include "pc+${profile.symbolInclude}+inet(evdev)" };
-        xkb_geometry { include "pc(pc105)" };
-      };
-      EOF
-      xkbcomp -I${static.xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
-      test -s $out/${profile.id}.xkm
-    '') profileInputs)}
-  '';
   xvfbGlx = static.xvfb.overrideAttrs (old: {
   pname = "xvfb-static-glx-llvmpipe";
   NIX_LDFLAGS = (old.NIX_LDFLAGS or "") + " -lstdc++";
@@ -64,22 +48,7 @@ let
     substituteInPlace hw/vfb/meson.build \
       --replace-fail 'dependencies: common_dep,' \
       "dependencies: common_dep, link_args: '-Wl,--gc-sections',"
-    header=xkb/xvfb_static_keymap_blob.h
-    : > "$header"
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      echo 'static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}[] = {' >> "$header"
-      od -An -v -tu1 ${keymapBlobs}/${profile.id}.xkm | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/' >> "$header"
-      echo '};' >> "$header"
-    '') profiles)}
-    cat >> "$header" <<'EOF'
-    struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };
-    static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {
-    EOF
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      echo '{ "${profile.id}", xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}, sizeof(xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}) },' >> "$header"
-    '') profiles)}
-    echo '};' >> "$header"
-  '';
+  '' + catalog.header;
   postInstall = (old.postInstall or "") + ''
     chmod u+w $out/bin/Xvfb
     ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
