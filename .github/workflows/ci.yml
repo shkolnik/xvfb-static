@@ -7,17 +7,13 @@ on:
 permissions:
   contents: read
 jobs:
-  shell-syntax:
-    name: Shell syntax
+  repo-checks:
+    name: Shell syntax and documentation consistency
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Parse every tracked shell script
-        run: |
-          mapfile -t scripts < <(git ls-files '*.sh')
-          test "${#scripts[@]}" -gt 0
-          printf 'checking %d scripts\n' "${#scripts[@]}"
-          bash -n "${scripts[@]}"
+      - name: Parse every tracked script and check documented facts
+        run: ./test/repo-checks.sh
 
   manylinux-lock:
     name: manylinux_2_28 lock updater
@@ -155,11 +151,11 @@ jobs:
   build-success:
     name: build-success
     if: always()
-    needs: [shell-syntax, manylinux-lock, build-and-smoke]
+    needs: [repo-checks, manylinux-lock, build-and-smoke]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every build and test to pass
         run: |
-          test "${{ needs.shell-syntax.result }}" = success
+          test "${{ needs.repo-checks.result }}" = success
           test "${{ needs.manylinux-lock.result }}" = success
           test "${{ needs.build-and-smoke.result }}" = success

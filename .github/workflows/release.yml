@@ -16,8 +16,17 @@ concurrency:
   group: release-${{ github.ref }}
 
 jobs:
+  repo-checks:
+    name: Shell syntax and documentation consistency
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Parse every tracked script and check documented facts
+        run: ./test/repo-checks.sh
+
   build-and-smoke:
     name: Build and smoke-test (${{ matrix.variant }}, ${{ matrix.arch }})
+    needs: repo-checks
     permissions:
       artifact-metadata: write
       attestations: write

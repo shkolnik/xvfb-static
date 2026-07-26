@@ -15,14 +15,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Single source of truth for the pinned build container; see build-image.txt.
 image="$(cat "$root/build-image.txt")"
 docker run --rm \
-  -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
   -e CACHIX_CACHE_NAME -e CACHIX_AUTH_TOKEN -e CACHIX_SIGNING_KEY \
   -v "$root":/src -w /src -v xvfb-static-nix:/nix \
   "$image" sh -eu -c "
     git config --global --add safe.directory /src
     bash /src/nix-build-cached.sh nix --extra-experimental-features 'nix-command flakes' \
       build '.#checks.$(case "$arch" in x86_64) echo x86_64-linux ;; aarch64) echo aarch64-linux ;; esac).keyboard-profiles' \
-      --no-link --option log-lines 200 --impure
+      --no-link --option log-lines 200
   "
 
 echo "xvfb-static keyboard integration test passed ($arch)"

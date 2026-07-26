@@ -64,14 +64,13 @@ esac
 echo "Evaluating the pinned X.Org Server version..."
 upstream_version="$(
   docker run --rm \
-    -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
     -v "$root":/src -w /src \
     -v xvfb-static-nix:/nix \
     "$image" sh -c "
       set -eu
       git config --global --add safe.directory /src
       nix --extra-experimental-features 'nix-command flakes' \\
-        eval '.#xvfb-static-$arch.upstreamVersion' --raw --impure
+        eval '.#xvfb-static-$arch.upstreamVersion' --raw
     "
 )"
 if [[ ! "$upstream_version" =~ $RELEASE_UPSTREAM_REGEX ]]; then
@@ -169,14 +168,13 @@ fi
 
 evaluated_version="$(
   docker run --rm \
-    -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
     -v "$root":/src -w /src \
     -v xvfb-static-nix:/nix \
     "$image" sh -c "
       set -eu
       git config --global --add safe.directory /src
       nix --extra-experimental-features 'nix-command flakes' \\
-        eval '.#xvfb-static-$arch.releaseVersion' --raw --impure
+        eval '.#xvfb-static-$arch.releaseVersion' --raw
     "
 )"
 if [[ "$evaluated_version" != "$release_version" ]]; then
@@ -184,12 +182,11 @@ if [[ "$evaluated_version" != "$release_version" ]]; then
   exit 1
 fi
 
-# Parse every tracked script, not a hand-maintained subset: the previous list
-# had drifted to omit exactly the newest files, including both external Vulkan
-# scripts the release workflow depends on.
-mapfile -t release_scripts < <(git ls-files '*.sh')
-test "${#release_scripts[@]}" -gt 0
-bash -n "${release_scripts[@]}"
+# Parse every tracked script and check documented facts, rather than a
+# hand-maintained subset: the previous list had drifted to omit exactly the
+# newest files, including both external Vulkan scripts the release workflow
+# depends on.
+"$root/test/repo-checks.sh"
 git diff --check
 if [[ -n "$(git status --short)" ]]; then
   echo "release preparation left unexpected worktree changes" >&2
