@@ -7,14 +7,14 @@ let
   providedHostPkgs = hostPkgs;
   packageSets =
     if providedTargetPkgs == null && providedHostPkgs == null then
-      import /src/nix/manylinux-2-28-packages.nix { inherit system; }
+      import ./nix/manylinux-2-28-packages.nix { inherit system; }
     else if providedTargetPkgs != null && providedHostPkgs != null then
       { targetPkgs = providedTargetPkgs; hostPkgs = providedHostPkgs; }
     else
       throw "mesa-zink: targetPkgs and hostPkgs must be supplied together";
   target = packageSets.targetPkgs;
   host = packageSets.hostPkgs;
-  toolchain = import /src/nix/manylinux-2-28-stdenv.nix {
+  toolchain = import ./nix/manylinux-2-28-stdenv.nix {
     inherit system;
     hostPkgs = host;
   };

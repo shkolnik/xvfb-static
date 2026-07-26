@@ -1,5 +1,4 @@
-let
-  flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-in
+{ system ? builtins.currentSystem
+, pkgs ? import (builtins.getFlake (toString ./.)).inputs.nixpkgs { inherit system; }
+}:
 pkgs.cachix

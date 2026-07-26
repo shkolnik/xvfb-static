@@ -1,18 +1,20 @@
+# nixpkgsSource is a parameter so flake.nix can pass its own locked input in.
+# The getFlake default is only for direct `nix build --file` use; leaving it as
+# an unconditional call made this file re-enter the flake from inside the
+# flake's own outputs, on an unlocked store path, which forced --impure.
 { system ? builtins.currentSystem
-, hostSystem ? builtins.currentSystem
-, hostPkgs ?
-    let
-      flake = builtins.getFlake (toString ../.);
-    in
-    import flake.inputs.nixpkgs { system = hostSystem; }
+# x86_64 and aarch64 are built as native siblings, so the build host matches the
+# target by default. Defaulting to `system` rather than builtins.currentSystem
+# keeps evaluation pure once a caller states the system explicitly.
+, hostSystem ? system
+, nixpkgsSource ? (builtins.getFlake (toString ../.)).inputs.nixpkgs
+, hostPkgs ? import nixpkgsSource { system = hostSystem; }
 }:
 
 let
   toolchain = import ./manylinux-2-28-stdenv.nix {
     inherit system hostPkgs;
   };
-  flake = builtins.getFlake (toString ../.);
-  nixpkgsSource = flake.inputs.nixpkgs;
   targetPkgs = import nixpkgsSource {
     inherit system;
     config.replaceStdenv = _pkgs:

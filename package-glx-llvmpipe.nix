@@ -1,11 +1,12 @@
-{ system ? builtins.currentSystem }:
+# See mesa-llvmpipe.nix for why pkgs is a parameter with a getFlake default.
+{ system ? builtins.currentSystem
+, pkgs ? import (builtins.getFlake (toString ./.)).inputs.nixpkgs { inherit system; }
+}:
 let
-  flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs { inherit system; };
   static = pkgs.pkgsStatic;
-  mesaLLVMpipe = import /src/mesa-llvmpipe.nix { inherit system; };
+  mesaLLVMpipe = import ./mesa-llvmpipe.nix { inherit system pkgs; };
   targetLLVM = mesaLLVMpipe.targetLLVM;
-  profiles = import /src/keyboard-profiles.nix;
+  profiles = import ./keyboard-profiles.nix;
   libxcvtStatic = static.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -53,11 +54,11 @@ let
     "-Dc_link_args=-Wl,--allow-multiple-definition"
   ];
   patches = (old.patches or [ ]) ++ [
-    /src/patches/xserver-0001-xkb-env-overrides.patch
-    /src/patches/xserver-0002-embedded-keymap.patch
-    /src/patches/xserver-0003-keyboard-profile-option.patch
-    /src/patches/xserver-0004-component-log-prefixes.patch
-    /src/patches/xserver-0005-linked-swrast.patch
+    ./patches/xserver-0001-xkb-env-overrides.patch
+    ./patches/xserver-0002-embedded-keymap.patch
+    ./patches/xserver-0003-keyboard-profile-option.patch
+    ./patches/xserver-0004-component-log-prefixes.patch
+    ./patches/xserver-0005-linked-swrast.patch
   ];
   postPatch = (old.postPatch or "") + ''
     substituteInPlace hw/vfb/meson.build \
@@ -84,7 +85,7 @@ let
     ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
   '';
   });
-  standardPackage = static.callPackage /src/package.nix { };
+  standardPackage = static.callPackage ./package.nix { };
   releaseVersion = standardPackage.releaseVersion;
   releaseRevision = standardPackage.releaseRevision;
   nativeBuildInputs = [
