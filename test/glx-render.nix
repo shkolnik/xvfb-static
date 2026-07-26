@@ -1,9 +1,9 @@
-{ system ? builtins.currentSystem }:
+{ system ? builtins.currentSystem
+, pkgs ? import (builtins.getFlake (toString ../.)).inputs.nixpkgs { inherit system; }
+}:
 let
-  flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs { inherit system; };
   static = pkgs.pkgsStatic;
-  mesaLLVMpipe = import /src/mesa-llvmpipe.nix { inherit system; };
+  mesaLLVMpipe = import ../mesa-llvmpipe.nix { inherit system pkgs; };
 in
 static.stdenv.mkDerivation {
   pname = "xvfb-static-glx-render-test";

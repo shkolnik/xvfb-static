@@ -5,6 +5,9 @@
 
   outputs = { nixpkgs, ... }:
     let
+      # The flake's own locked input, threaded into the files that would
+      # otherwise resolve nixpkgs through a self-referential getFlake.
+      nixpkgsSource = nixpkgs;
       x86Host = import nixpkgs { system = "x86_64-linux"; };
       armHost = import nixpkgs { system = "aarch64-linux"; };
       mk = pkgs: pkgs.callPackage ./package.nix { };
@@ -16,14 +19,19 @@
         corruptXvfb = corruptPackage;
       };
     in {
+      # Pass the already-imported package set in rather than letting the GLX
+      # files resolve nixpkgs themselves: their getFlake defaults would
+      # re-enter this flake from inside its own outputs.
       packages.x86_64-linux = {
         default = mk x86Host.pkgsStatic;
         xvfb-static-x86_64 = mk x86Host.pkgsStatic;
         xvfb-static-glx-llvmpipe-alpha-x86_64 = import ./package-glx-llvmpipe.nix {
           system = "x86_64-linux";
+          pkgs = x86Host;
         };
         xvfb-static-glx-external-vulkan-alpha-x86_64 = import ./package-glx-external-vulkan.nix {
           system = "x86_64-linux";
+          inherit nixpkgsSource;
         };
       };
 
@@ -32,9 +40,11 @@
         xvfb-static-aarch64 = mk armHost.pkgsStatic;
         xvfb-static-glx-llvmpipe-alpha-aarch64 = import ./package-glx-llvmpipe.nix {
           system = "aarch64-linux";
+          pkgs = armHost;
         };
         xvfb-static-glx-external-vulkan-alpha-aarch64 = import ./package-glx-external-vulkan.nix {
           system = "aarch64-linux";
+          inherit nixpkgsSource;
         };
       };
       checks.x86_64-linux.keyboard-profiles =

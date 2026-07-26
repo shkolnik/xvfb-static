@@ -1,6 +1,13 @@
-{ system ? builtins.currentSystem }:
+# See mesa-llvmpipe.nix for why nixpkgsSource is a parameter with a getFlake
+# default: passing the flake's own locked input in keeps this out of an
+# unlocked self-referential getFlake, which is what forced --impure.
+{ system ? builtins.currentSystem
+, nixpkgsSource ? (builtins.getFlake (toString ./.)).inputs.nixpkgs
+}:
 let
-  packageSets = import /src/nix/manylinux-2-28-packages.nix { inherit system; };
+  packageSets = import ./nix/manylinux-2-28-packages.nix {
+    inherit system nixpkgsSource;
+  };
   # Target libraries are built by the manylinux compatibility stdenv.  Keep
   # native executables (build tools and archive assembly) on the ordinary host
   # package set; this is the only package-set boundary used by this derivation.
@@ -8,7 +15,7 @@ let
   hostPkgs = packageSets.hostPkgs;
   toolchain = packageSets.toolchain;
   static = hostPkgs.pkgsStatic;
-  mesaZink = import /src/mesa-zink.nix {
+  mesaZink = import ./mesa-zink.nix {
     inherit system;
     targetPkgs = pkgs;
     hostPkgs = hostPkgs;
@@ -18,7 +25,7 @@ let
     configureFlags = (old.configureFlags or [ ]) ++ [ "no-tests" ];
     doCheck = false;
   });
-  profiles = import /src/keyboard-profiles.nix;
+  profiles = import ./keyboard-profiles.nix;
   libxcvtStatic = pkgs.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -139,11 +146,11 @@ let
       "-Dc_link_args=-Wl,--allow-multiple-definition"
     ];
     patches = (old.patches or [ ]) ++ [
-      /src/patches/xserver-0001-xkb-env-overrides.patch
-      /src/patches/xserver-0002-embedded-keymap.patch
-      /src/patches/xserver-0003-keyboard-profile-option.patch
-      /src/patches/xserver-0004-component-log-prefixes.patch
-      /src/patches/xserver-0005-linked-swrast.patch
+      ./patches/xserver-0001-xkb-env-overrides.patch
+      ./patches/xserver-0002-embedded-keymap.patch
+      ./patches/xserver-0003-keyboard-profile-option.patch
+      ./patches/xserver-0004-component-log-prefixes.patch
+      ./patches/xserver-0005-linked-swrast.patch
     ];
     postPatch = (old.postPatch or "") + ''
       substituteInPlace meson.build \
@@ -182,7 +189,7 @@ endif" "message('Skipping unshipped Xserver test targets')"
       patchelf --set-interpreter ${interpreter} --remove-rpath $out/bin/Xvfb
     '';
   });
-  standardPackage = static.callPackage /src/package.nix { };
+  standardPackage = static.callPackage ./package.nix { };
   releaseVersion = standardPackage.releaseVersion;
   releaseRevision = standardPackage.releaseRevision;
 in
