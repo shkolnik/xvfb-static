@@ -25,7 +25,12 @@ let
     configureFlags = (old.configureFlags or [ ]) ++ [ "no-tests" ];
     doCheck = false;
   });
-  profiles = import ./keyboard-profiles.nix;
+  catalog = import ./nix/keymap-catalog.nix {
+    inherit (pkgs) lib runCommand;
+    inherit (hostPkgs) xkbcomp xkeyboard_config;
+    name = "xvfb-static-glx-external-vulkan-keymaps";
+  };
+  profiles = catalog.profiles;
   libxcvtStatic = pkgs.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -87,29 +92,6 @@ let
       "-Dxkb_dir=${hostPkgs.xkeyboard_config}/share/X11/xkb"
     else
       flag;
-  profileInputs = map (profile: profile // {
-    symbolInclude = profile.layout + (if profile.variant == "" then "" else "(${profile.variant})");
-  }) profiles;
-  keymapBlobs = pkgs.runCommand "xvfb-static-glx-external-vulkan-keymaps" {
-    # xkbcomp and its source data generate embedded bytes at build time; they
-    # are not linked into the target and must use the normal native toolchain.
-    nativeBuildInputs = [ hostPkgs.xkbcomp ];
-  } ''
-    mkdir -p $out
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      cat > ${profile.id}.xkb <<'EOF'
-      xkb_keymap "${profile.id}" {
-        xkb_keycodes { include "evdev+aliases(qwerty)" };
-        xkb_types { include "complete" };
-        xkb_compatibility { include "complete" };
-        xkb_symbols { include "pc+${profile.symbolInclude}+inet(evdev)" };
-        xkb_geometry { include "pc(pc105)" };
-      };
-      EOF
-      xkbcomp -I${hostPkgs.xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
-      test -s $out/${profile.id}.xkm
-    '') profileInputs)}
-  '';
   # The package boundary rewrites the build-time sysroot loader to the
   # deployment path selected by the compatibility stdenv. Keep this single
   # source of truth rather than duplicating an architecture conditional here.
@@ -169,20 +151,7 @@ endif" "message('Skipping unshipped Xserver test targets')"
       substituteInPlace hw/vfb/meson.build \
         --replace-fail 'dependencies: common_dep,' \
         "dependencies: common_dep, link_args: ['-Wl,--gc-sections', '${pkgs.lib.getLib bzip2Static}/lib/libbz2.a', '${pkgs.lib.getLib opensslStatic}/lib/libcrypto.a'],"
-      header=xkb/xvfb_static_keymap_blob.h
-      : > "$header"
-      ${builtins.concatStringsSep "\n" (map (profile: ''
-        echo 'static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}[] = {' >> "$header"
-        od -An -v -tu1 ${keymapBlobs}/${profile.id}.xkm | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/' >> "$header"
-        echo '};' >> "$header"
-      '') profiles)}
-      echo 'struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };' >> "$header"
-      echo 'static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {' >> "$header"
-      ${builtins.concatStringsSep "\n" (map (profile: ''
-        echo '{ "${profile.id}", xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}, sizeof(xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}) },' >> "$header"
-      '') profiles)}
-      echo '};' >> "$header"
-    '';
+    '' + catalog.header;
     postInstall = (old.postInstall or "") + ''
       chmod u+w $out/bin/Xvfb
       ${hostPkgs.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
