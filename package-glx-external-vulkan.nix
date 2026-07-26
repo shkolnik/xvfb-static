@@ -228,7 +228,7 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   test "$(patchelf --print-interpreter $out/bin/Xvfb)" = "${interpreter}"
   test -z "$(patchelf --print-rpath $out/bin/Xvfb)"
   forbidden_strings="$(strings $out/bin/Xvfb |
-    grep -E '/nix/store|libLLVM|LLVM_[0-9]|swrast_dri|libGL\\.so|libgallium[^ ]*\\.so' || true)"
+    grep -E '/nix/store|libLLVM|LLVM_[0-9]|swrast_dri|libGL\.so|libgallium[^ ]*\.so' || true)"
   if test -n "$forbidden_strings"; then
     echo 'xvfb-static: external Vulkan binary contains forbidden runtime or LLVM references:' >&2
     printf '%s\n' "$forbidden_strings" >&2
@@ -313,6 +313,18 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   extract_license ${pkgs.expat.src} COPYING $L/expat.COPYING
   extract_license ${pkgs.stdenv.cc.cc.src} COPYING3 $L/libstdc++-COPYING3
   extract_license ${pkgs.stdenv.cc.cc.src} COPYING.RUNTIME $L/libstdc++-COPYING.RUNTIME
+
+  # This variant forbids incorporating LLVM at all, so its archive must carry no
+  # LLVM notice.  The binary string scan above proves no LLVM code was linked;
+  # this proves the packaging layer did not ship an LLVM notice regardless.
+  # Without it, adding an extract_license line for LLVM would produce an
+  # LLVM-notice-bearing archive with a green build.
+  llvm_notices="$(find $L -type f \( -iname '*llvm*' -o -iname '*polly*' -o -iname '*blake3*' \) )"
+  if test -n "$llvm_notices"; then
+    echo 'xvfb-static: external Vulkan archive must not contain LLVM license texts:' >&2
+    printf '%s\n' "$llvm_notices" >&2
+    exit 1
+  fi
 
   files=$(cd $out && find . -type f | cut -c3- | {
     cat
