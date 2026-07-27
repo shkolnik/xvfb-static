@@ -68,7 +68,7 @@ in runCommand "xvfb-static-${releaseVersion}" {
   extract_license ${libxfont_2.src} COPYING $L/libXfont2.COPYING
   extract_license ${libxcvt.src} COPYING $L/libxcvt.COPYING
   extract_license ${pixman.src} COPYING $L/pixman.COPYING
-  extract_license ${zlib.src} LICENSE $L/zlib.COPYING
+  extract_license ${zlib.src} LICENSE $L/zlib.LICENSE
   extract_license ${libmd.src} COPYING $L/libmd.COPYING
   ${manifest.mkManifestScript {
     arch = "${stdenv.hostPlatform.parsed.cpu.name}";
