@@ -12,7 +12,23 @@ cachix_path="$(
 )"
 cachix="$cachix_path/bin/cachix"
 
-"$cachix" use "$cache_name"
+# Cache setup is diagnostics, not output. Keeping it off stdout lets a caller
+# capture the wrapped command's own output -- test/manylinux-2-28-toolchain.sh
+# reads a store path back from `nix build --print-out-paths`.
+"$cachix" use "$cache_name" >&2
+
+# Prove the substituter took effect rather than assuming it did. A cache that
+# is configured but not consulted is indistinguishable from a cold cache: the
+# build still succeeds, just slowly, every time. That is exactly how the
+# manylinux toolchain went on rebuilding GCC from source unnoticed.
+substituters="$(
+  nix --extra-experimental-features 'nix-command flakes' config show substituters
+)"
+if ! printf '%s\n' "$substituters" | grep -qF "$cache_name.cachix.org"; then
+  echo "cachix use did not add $cache_name.cachix.org as a substituter" >&2
+  echo "substituters: $substituters" >&2
+  exit 1
+fi
 
 auth_token="${CACHIX_AUTH_TOKEN:-}"
 signing_key="${CACHIX_SIGNING_KEY:-}"

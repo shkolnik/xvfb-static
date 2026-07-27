@@ -41,15 +41,29 @@ audit_output=$(
     -e PROBE_OUTPUT="$probe_output" \
     -e TASK_SYSTEM="$system" \
     -e EXPECTED_LOADER="$expected_loader" \
+    -e CACHIX_CACHE_NAME -e CACHIX_AUTH_TOKEN -e CACHIX_SIGNING_KEY \
     -v "$repo_root":/src:ro \
     -v "$nix_volume":/nix \
     -w /src \
     "$nix_image" sh -eu -c '
       if test -z "$PROBE_OUTPUT"; then
-        PROBE_OUTPUT=$(nix build \
+        # Through nix-build-cached.sh, like every other build in this project.
+        # Calling nix directly left this container with only the image default
+        # substituter, so the manylinux derivations -- the sysroot chain, the
+        # compatibility stdenv, the rebuilt GCC runtime, the probes -- could
+        # neither be fetched from the project cache nor pushed to it, and were
+        # rebuilt from source on every run.
+        #
+        # The store path is recovered from the captured output rather than read
+        # straight off stdout, because the wrapper prints its own cache setup
+        # there before handing over to nix.
+        nix_output=$(mktemp)
+        bash /src/nix-build-cached.sh nix build \
           --impure --no-link --print-out-paths --cores 8 --option log-lines 200 \
           --file /src/test/manylinux-2-28-toolchain.nix \
-          --argstr system "$TASK_SYSTEM")
+          --argstr system "$TASK_SYSTEM" > "$nix_output"
+        PROBE_OUTPUT=$(grep -E "^/nix/store/[a-z0-9]{32}-" "$nix_output" | tail -n 1)
+        rm -f "$nix_output"
       fi
 
       test -x "$PROBE_OUTPUT/bin/manylinux-2-28-probe-c"
