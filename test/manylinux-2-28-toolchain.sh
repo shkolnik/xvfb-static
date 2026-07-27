@@ -2,7 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-nix_image="nixos/nix@sha256:22c0a3a816eb3d315eb6720d2a58a3c3b622c9717c578f3c80b687668c6da277"
+. "$repo_root/test/images.sh"
+nix_image="$(cat "$repo_root/build-image.txt")"
 nix_volume="xvfb-static-manylinux-nix"
 probe_output="${1:-}"
 
@@ -142,7 +143,7 @@ run_probes() {
   echo "manylinux_2_28 zlib probe passed on $distribution"
 }
 
-run_probes debian:11-slim "Debian 11"
-run_probes ubuntu:24.04 "Ubuntu 24.04"
+run_probes "$XVFB_STATIC_DEBIAN_11_IMAGE" "Debian 11"
+run_probes "$XVFB_STATIC_UBUNTU_2404_IMAGE" "Ubuntu 24.04"
 
 echo "maximum imported glibc symbol: GLIBC_2.28 or older"

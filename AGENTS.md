@@ -418,8 +418,10 @@ release. It derives the upstream version through the same digest-pinned Nix
 Docker image as `build.sh`, considers tags already present on GitHub, and
 updates only `releaseRevision`. Interactive runs require confirmation;
 `--dry-run` previews without changing source, commits, tags, or remote
-branches. Keep the Docker image digest in `release.sh` synchronized with
-`build.sh` whenever the build environment changes.
+branches. Changing the build environment means editing `build-image.txt`, the
+only place the build container is named; `test/images.sh` does the same for the
+test containers, and `test/docker-image-pins.sh` fails if any other tracked file
+names an image or if either file falls back to a mutable tag.
 
 The release workflow:
 

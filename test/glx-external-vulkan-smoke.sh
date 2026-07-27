@@ -2,6 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$root/test/images.sh"
 archive="${1:-}"
 render_test="${2:-$root/result-glx-render-test/bin/glx-render-test}"
 if [[ -z "$archive" ]]; then
@@ -147,7 +148,7 @@ cp -L "$render_test" "$tmp/glx-render-test"
 # a newer runtime below.
 docker run --name "$name" --rm \
   -v "$tmp":/package:ro \
-  debian:11-slim sh -eu -c '
+  "$XVFB_STATIC_DEBIAN_11_IMAGE" sh -eu -c '
     export DEBIAN_FRONTEND=noninteractive
     apt-get update >/dev/null
     apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers >/dev/null
@@ -200,7 +201,7 @@ docker run --name "$name" --rm \
 
 docker run --name "$positive_name" --rm \
   -v "$tmp":/package:ro \
-  debian:trixie-slim sh -eu -c '
+  "$XVFB_STATIC_DEBIAN_TRIXIE_IMAGE" sh -eu -c '
     export DEBIAN_FRONTEND=noninteractive
     apt-get update >/dev/null
     apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri >/dev/null
