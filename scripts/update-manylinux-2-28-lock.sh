@@ -73,10 +73,21 @@ prefetch_lock() {
 x86_64_lock=$(prefetch_lock x86_64-linux)
 aarch64_lock=$(prefetch_lock aarch64-linux)
 
+lock_file="$repo_root/nix/manylinux-2-28-images.json"
+tmp="$(mktemp "$repo_root/nix/.manylinux-2-28-images.json.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+# mktemp creates the file 0600. Seed the temp from the existing lock so it
+# carries the lock file's own mode, then truncate and rewrite it: a plain `>`
+# redirect leaves an existing file's permissions alone.
+cp -p "$lock_file" "$tmp"
 jq -n \
   --argjson x86_64 "$x86_64_lock" \
   --argjson aarch64 "$aarch64_lock" \
   '{
     "x86_64-linux": $x86_64,
     "aarch64-linux": $aarch64
-  }'
+  }' > "$tmp"
+mv "$tmp" "$lock_file"
+trap - EXIT
+
+echo "wrote $lock_file" >&2
