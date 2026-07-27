@@ -38,9 +38,8 @@ GitHub-hosted runners.
   See the release gate in section 10 for exactly what is and is not enforced.
 
 Still genuinely open, and not to be erased without evidence: a full
-closure-versus-licence audit (section 9), an SBOM, actual-GPU validation of the
-external Vulkan variant, and one test-coverage asymmetry. Section 11 tracks
-these.
+closure-versus-licence audit (section 9), an SBOM, and actual-GPU validation of
+the external Vulkan variant. Section 11 tracks these.
 
 This repository must stay understandable, buildable, testable, and legally
 distributable on its own.
@@ -186,7 +185,7 @@ Every tracked file appears below. If you add one, add a row.
 | `mesa-llvmpipe.nix` / `package-glx-llvmpipe.nix` | Fully static Mesa llvmpipe/LLVM and GLX Xvfb alpha build. |
 | `mesa-zink.nix` / `package-glx-external-vulkan.nix` | Host-assisted external Vulkan/Zink alpha build. |
 | `nix/mesa-common.nix` | The `mesa.override` arguments, mesonFlags, and dril-loader skip genuinely shared by both `mesa-llvmpipe.nix` and `mesa-zink.nix`. Deliberately does not unify their package-set construction, `nativeBuildInputs` strategy, `library()`/`static_library()` rewrite, or LLVM/SPIR-V-region mesonFlags, which differ in real build behavior, not formatting. |
-| `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded. |
+| `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded, plus the `corruptEmbeddedProfile` fault-injection assertion. Parameterized by `xvfbStatic`/`corruptXvfb`; flake.nix wires it against both the standard and the GLX llvmpipe alpha packages, since both are fully static and can run it directly inside the Nix build sandbox. |
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
 | `nix/extract-license.sh` | The one hardened license extractor, interpolated into all three package derivations. |
 | `nix/keymap-catalog.nix` | The one keymap-catalog implementation: compiles every profile's XKM blob and generates the C arrays and lookup table embedded into Xvfb. |
@@ -254,9 +253,10 @@ to their named upstreams. See section 7 for ordering rules.
 | `test/archive-checks.sh` | Variant-agnostic archive checks: shape, manifest inventory, licenses, absence of XKB runtime data, profile catalog. Runs against all six artifacts. |
 | `test/smoke.sh` | Runs `archive-checks.sh`, asserts static linkage, then boots Xvfb and exercises `-keyboard` inside clean Alpine. |
 | `test/glx-llvmpipe-smoke.sh` | Verifies indirect llvmpipe GLX render/readback without host graphics libraries. |
-| `test/glx-external-vulkan-smoke.sh` | Verifies the host-assisted ABI against the declared glibc floor, the loud missing-loader failure, and Zink render/readback. Needs a glibc environment, not Alpine. |
+| `test/glx-external-vulkan-smoke.sh` | Verifies the host-assisted ABI against the declared glibc floor, the loud missing-loader failure, and Zink render/readback. Also boots `-keyboard` (success, unknown, and missing-profile cases) and the corrupted-profile fault injection against a working Vulkan ICD, since this variant cannot take the flake's `keyboard-profiles` check; see `test/glx-external-vulkan-corrupt.nix`. Needs a glibc environment, not Alpine. |
+| `test/glx-external-vulkan-corrupt.nix` | Builds the external Vulkan Xvfb binary with one embedded keyboard profile corrupted, for the fault-injection assertion in `test/glx-external-vulkan-smoke.sh`. Reuses `package-glx-external-vulkan.nix`'s own `corruptEmbeddedProfile` parameter. |
 | `test/glx-render.nix` / `test/glx-render.c` | The GLX client used for render/readback checks. |
-| `test/integration.sh` | Runs the Nix `checks` in the pinned container. |
+| `test/integration.sh` | Runs a named Nix check (default `keyboard-profiles`) in the pinned container; also takes `glx-llvmpipe-keyboard-profiles`. |
 | `test/manylinux-2-28-lock.sh` | Asserts the image lock's shape and that a divergent lock is rejected. |
 | `test/manylinux-2-28-toolchain.sh` / `test/manylinux-2-28-toolchain.nix` | The glibc symbol-version gate: compiles the probes below and fails on any import newer than the declared floor. |
 | `test/manylinux-2-28-probe.c`, `test/manylinux-2-28-probe.cc`, `test/manylinux-2-28-zlib-probe.c` | C, C++, and zlib probes for that gate. |
@@ -683,15 +683,7 @@ In priority order:
    The remaining item is native actual-GPU render/readback on both
    architectures; everything else is enforced.
 
-3. **Close the remaining test-coverage asymmetry.** The `-keyboard` selector
-   and the `corruptEmbeddedProfile` fault injection are exercised only against
-   the standard variant. Both GLX variants embed the same catalog through the
-   same `nix/keymap-catalog.nix` and apply the same patch, and neither is
-   covered. `test/smoke.sh` already runs the `-keyboard` assertions against
-   the llvmpipe archive; the external Vulkan archive cannot run `smoke.sh` at
-   all, so its keyboard coverage is zero.
-
-4. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
+3. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
    static closure and complement, not replace, license texts. This and gap 1
    want the same closure-walking machinery; build it once.
 
@@ -745,6 +737,22 @@ Closed, and kept here so the record is not re-opened by accident:
   longer itself linked against LLVM and llvmpipe. CI and the release workflow
   pass `--argstr backend llvmpipe` for the llvmpipe matrix entries and
   `--argstr backend zink` for the external Vulkan ones.
+- **Close the test-coverage asymmetry** (was the other half of gap 3). The
+  `-keyboard` selector and the `corruptEmbeddedProfile` fault injection used to
+  run only against the standard variant, even though both GLX variants embed
+  the same catalog through the same `nix/keymap-catalog.nix` and apply the
+  same patch. `package-glx-llvmpipe.nix` and `package-glx-external-vulkan.nix`
+  now take the same `corruptEmbeddedProfile` parameter `package.nix` always
+  had. The GLX llvmpipe alpha stays fully static, so it runs the existing
+  `integration-test.nix` check directly in the Nix build sandbox, wired as
+  `checks.<arch>.glx-llvmpipe-keyboard-profiles` and driven by
+  `test/integration.sh <arch> glx-llvmpipe-keyboard-profiles`. The external
+  Vulkan alpha is host-assisted and cannot: its packaged ELF interpreter names
+  a host loader path the sandbox does not provide. `test/glx-external-vulkan-corrupt.nix`
+  builds its corrupted-profile binary instead, and
+  `test/glx-external-vulkan-smoke.sh` boots it, plus representative `-keyboard`
+  success and failure cases, against the same working Vulkan ICD its Zink
+  render check already proves out.
 
 ## 12. Engineering principles
 

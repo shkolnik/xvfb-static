@@ -3,6 +3,7 @@
 # unlocked self-referential getFlake, which is what forced --impure.
 { system ? builtins.currentSystem
 , nixpkgsSource ? (builtins.getFlake (toString ./.)).inputs.nixpkgs
+, corruptEmbeddedProfile ? null
 }:
 let
   staticOverrides = import ./nix/manylinux-2-28-static-overrides.nix;
@@ -41,6 +42,7 @@ let
     inherit (pkgs) lib runCommand;
     inherit (hostPkgs) xkbcomp xkeyboard_config;
     name = "xvfb-static-glx-external-vulkan-keymaps";
+    inherit corruptEmbeddedProfile;
   };
   profiles = catalog.profiles;
   libxcvtStatic = pkgs.libxcvt.overrideAttrs (old: {

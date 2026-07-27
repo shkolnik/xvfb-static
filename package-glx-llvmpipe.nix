@@ -1,6 +1,7 @@
 # See mesa-llvmpipe.nix for why pkgs is a parameter with a getFlake default.
 { system ? builtins.currentSystem
 , pkgs ? import (builtins.getFlake (toString ./.)).inputs.nixpkgs { inherit system; }
+, corruptEmbeddedProfile ? null
 }:
 let
   static = pkgs.pkgsStatic;
@@ -19,6 +20,7 @@ let
     inherit (pkgs) lib;
     inherit (static) runCommand xkbcomp xkeyboard_config;
     name = "xvfb-static-glx-keymaps";
+    inherit corruptEmbeddedProfile;
   };
   profiles = catalog.profiles;
   libxcvtStatic = static.libxcvt.overrideAttrs (old: {
