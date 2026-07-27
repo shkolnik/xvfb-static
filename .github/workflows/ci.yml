@@ -48,18 +48,22 @@ jobs:
           - arch: x86_64
             runner: ubuntu-24.04
             variant: glx-llvmpipe
+            glx-backend: llvmpipe
             archive: out/glx-llvmpipe-alpha/x86_64/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz
           - arch: aarch64
             runner: ubuntu-24.04-arm
             variant: glx-llvmpipe
+            glx-backend: llvmpipe
             archive: out/glx-llvmpipe-alpha/aarch64/xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz
           - arch: x86_64
             runner: ubuntu-24.04
             variant: glx-external-vulkan
+            glx-backend: zink
             archive: out/glx-external-vulkan-alpha/x86_64/xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz
           - arch: aarch64
             runner: ubuntu-24.04-arm
             variant: glx-external-vulkan
+            glx-backend: zink
             archive: out/glx-external-vulkan-alpha/aarch64/xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz
     runs-on: ${{ matrix.runner }}
     # Pull requests from forks get anonymous cache reads only; trusted branch
@@ -108,6 +112,7 @@ jobs:
               bash /src/nix-build-cached.sh nix \
                 --extra-experimental-features "nix-command flakes" build \
                 --impure --file /src/test/glx-render.nix \
+                --argstr backend "${{ matrix.glx-backend }}" \
                 --out-link /tmp/result-glx-render-test --option log-lines 200
               test -x /tmp/result-glx-render-test/bin/glx-render-test
               rm -rf /src/result-glx-render-test
