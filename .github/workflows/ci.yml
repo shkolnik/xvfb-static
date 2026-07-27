@@ -99,7 +99,6 @@ jobs:
         name: Build GLX render test
         run: |
           docker run --rm \
-            -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
             -e CACHIX_CACHE_NAME -e CACHIX_AUTH_TOKEN -e CACHIX_SIGNING_KEY \
             -v "$PWD":/src -w /src \
             -v xvfb-static-nix:/nix \
