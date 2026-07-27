@@ -44,24 +44,29 @@ indirect GLX without a host GPU driver or shared library. They are larger and
 remain explicitly experimental while their compatibility receives broader
 testing.
 
-An **external Vulkan GLX alpha** prototype takes the opposite tradeoff. It
+An **external Vulkan GLX alpha** artifact takes the opposite tradeoff. It
 statically incorporates Mesa Zink but deliberately opens the host's
 `libvulkan.so.1`, allowing the Vulkan loader and installed ICD to expose a real
-GPU. It contains no LLVM or llvmpipe and is expected to be substantially
-smaller than the llvmpipe artifact. This variant is host-assisted rather than
-fully static: it requires a compatible glibc host, Vulkan loader, and usable
-ICD. The intended compatibility floor is glibc 2.31, but that is not yet a
-published guarantee while the build toolchain and symbol-version gate are
-being completed.
+GPU. It contains no LLVM or llvmpipe. This variant is host-assisted rather than
+fully static: it requires a glibc host, a Vulkan loader, and a usable ICD.
 
-The external Vulkan prototype is not a release asset. Publication remains
-blocked until native render/readback succeeds on actual x86_64 and aarch64
-GPUs, with tests proving that no software renderer was selected. See the
+Its glibc floor is **2.28**. The binary is built against a manylinux_2_28
+compatibility toolchain, and both the toolchain test and the release smoke test
+fail if it imports any symbol newer than `GLIBC_2.28`. The floor is also
+recorded in each archive's manifest as `glibc_symbol_floor`.
+
+This variant is published, as an alpha. Its release tests prove the ABI floor,
+the dynamic-dependency allowlist, a loud failure when the loader or an ICD is
+missing, the absence of LLVM and of any software-renderer fallback, and
+Zink render/readback — but that last one runs over lavapipe. **No test in this
+project performs render/readback on an actual GPU**, so treat GPU support as
+untested rather than proven, and validate it on your own hardware before
+depending on it. See the
 [implementation and validation plan](docs/GLX-EXTERNAL-VULKAN-PLAN.md).
 
 ## Download
 
-Published GitHub Releases will contain:
+Published GitHub Releases contain:
 
 - `xvfb-static-linux-x86_64.tar.gz`
 - `xvfb-static-linux-aarch64.tar.gz`
@@ -133,7 +138,7 @@ You can also build the native package with an existing flakes-enabled Nix
 installation:
 
 ```sh
-NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 nix build .#default --impure
+nix build .#default
 ```
 
 Build and test the native GLX llvmpipe alpha artifact with:
@@ -147,13 +152,24 @@ Build and test the native GLX llvmpipe alpha artifact with:
 The explicit architecture names accepted by `build-glx-llvmpipe.sh` are `x86_64` and
 `aarch64`, matching `build.sh`.
 
-The external Vulkan alpha build, when enabled in the current checkout, uses an
-equivalently explicit `build-glx-external-vulkan.sh` entry point and writes
-under `out/glx-external-vulkan-alpha/<architecture>/`. Its runtime test must
-run on a glibc distribution with `libvulkan.so.1` and an installed Vulkan ICD;
-the ordinary fully static Alpine contract does not apply to this variant. The
-smoke test uses a newer Mesa lavapipe runtime only for Zink integration
-coverage; actual-GPU render/readback is still required before publication.
+The external Vulkan alpha build uses an equivalently explicit
+`build-glx-external-vulkan.sh` entry point and writes under
+`out/glx-external-vulkan-alpha/<architecture>/`:
+
+```sh
+./build-glx-external-vulkan.sh x86_64
+archive=out/glx-external-vulkan-alpha/x86_64/xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz
+./test/archive-checks.sh "$archive"
+./test/glx-external-vulkan-smoke.sh "$archive"
+```
+
+Note that `test/smoke.sh` does not apply to this variant: it asserts static
+linkage and boots in Alpine, and this artifact is host-assisted and needs
+glibc. `test/archive-checks.sh` holds the checks that are common to every
+variant, and `test/smoke.sh` runs it first. The external Vulkan runtime test
+must run on a glibc distribution with `libvulkan.so.1` and an installed Vulkan
+ICD; it uses a lavapipe runtime for Zink integration coverage, which is not
+actual-GPU coverage.
 
 ## Verify a download
 
@@ -174,6 +190,11 @@ server in a clean Alpine container with no X11 packages.
 For a GLX llvmpipe alpha download, substitute its full filename in both checksum and
 attestation commands. Its manifest should identify the `glx` variant, `alpha`
 maturity, llvmpipe renderer, and pinned Mesa and LLVM versions.
+
+An external Vulkan alpha download is host-assisted, so `file` reports a dynamic
+executable and `bin/Xvfb -version` needs a host Vulkan loader. Its manifest
+identifies the `zink` renderer and records `glibc_symbol_floor`; check that
+against your host with `ldd --version`.
 
 ## Why the X server is patched
 

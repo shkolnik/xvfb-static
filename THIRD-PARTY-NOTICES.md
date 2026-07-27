@@ -20,15 +20,32 @@ and their statically linked support libraries. Their pinned-source license and
 runtime-exception texts are included alongside the X.Org notices in each GLX
 archive. The standard archives do not include the GLX software-rendering stack.
 
-The external Vulkan GLX alpha prototype instead incorporates Mesa Zink and
-its statically linked support libraries. It must not incorporate LLVM,
-llvmpipe, softpipe, or lavapipe, and its archive must therefore contain no
-LLVM license bundle. The exact Mesa/Zink dependency notices still come from
-the pinned build sources and remain part of the package.
+The external Vulkan GLX alpha archives instead incorporate Mesa Zink and its
+statically linked support libraries. They must not incorporate LLVM, llvmpipe,
+softpipe, or lavapipe, and their archives must therefore contain no LLVM
+license bundle. That is enforced, not merely intended: the build fails if any
+LLVM, Polly, or BLAKE3 notice appears in the packaged license directory, and
+separately if the binary contains an LLVM symbol reference. The exact
+Mesa/Zink dependency notices still come from the pinned build sources and
+remain part of the package.
 
-That prototype loads the host's `libvulkan.so.1`, which in turn discovers a
+That variant loads the host's `libvulkan.so.1`, which in turn discovers a
 host-installed Vulkan ICD and any vendor-driver dependencies. The Vulkan
 loader, ICD, and their transitive libraries are runtime prerequisites but are
-not redistributed in the archive; their notices and license obligations
-remain with the host packages. This distinction must be re-audited against
-the actual linked closure before the prototype is eligible for release.
+**not redistributed** in the archive; their notices and license obligations
+remain with the host packages. Do not list them among the archive's notices,
+and do not omit a statically incorporated component on the grounds that the
+host is likely to have one too.
+
+## Open compliance gap
+
+The license lists in the three package derivations are hand-maintained, and
+nothing in the build compares them against what the binaries actually
+incorporate. The extractor fails when a *listed* notice is missing, empty, or
+ambiguous — it cannot fail when an incorporated component is *unlisted*.
+
+That gap is real and currently unclosed. Until a closure-versus-list check
+exists, the bundled notices should be treated as complete for the components
+listed and unverified for the closure as a whole, and any dependency change
+requires a manual audit. `AGENTS.md` section 11 tracks this as the top open
+item.
