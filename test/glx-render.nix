@@ -72,16 +72,13 @@ let
         hostPkgs = host;
       };
       staticOverrides = import ../nix/manylinux-2-28-static-overrides.nix;
-      # gl.pc's own Requires chain pulls in the same packages the shipped
-      # Xvfb links against to satisfy the identical `dependency('gl', ...,
-      # static: true)` request in package-glx-external-vulkan.nix -- mirror
-      # that buildInputs list here rather than rediscovering it by trial.
       libdrmStatic = staticOverrides.noIntelNoValgrindLibdrm target.libdrm;
-      bzip2Static = target.bzip2.override { enableStatic = true; };
-      opensslStatic = (target.openssl.override { static = true; }).overrideAttrs (old: {
-        configureFlags = (old.configureFlags or [ ]) ++ [ "no-tests" ];
-        doCheck = false;
-      });
+      # gl.pc's own "Requires: glx" pulls in glx.pc's full Requires/
+      # Requires.private chain; confirmed by reading the built gl.pc/glx.pc
+      # from the mesa-zink derivation directly rather than guessing:
+      # zlib, libdrm, xcb (+ xcb-randr/dri3/present/sync/xfixes/shm/glx/dri2,
+      # all provided by the one libxcb package), xshmfence, x11 (+ x11-xcb),
+      # xcb-keysyms, glproto (from xorgproto), xext, xxf86vm.
     in
     target.stdenv.mkDerivation {
       pname = "xvfb-static-glx-render-test";
@@ -98,21 +95,41 @@ let
         target.libxfixes
         target.libxxf86vm
         target.libxshmfence
+        target.xcbutilkeysyms
+        target.xorgproto
         target.libxau
         target.libxdmcp
-        target.brotli
-        bzip2Static
-        target.freetype
-        target.libfontenc
-        target.libpng
-        opensslStatic
       ];
       buildPhase = ''
         runHook preBuild
-        $CC -O2 -Wl,--allow-multiple-definition ${./glx-render.c} \
-          $(pkg-config --static --cflags --libs gl) \
+        # gl.pc/glx.pc's Libs.private carry a bare -lstdc++. Resolved with
+        # the ordinary dynamic-preferring linker search, that picks up the
+        # *host* toolchain's libstdc++.so (from the unrelated gcc-14.3.0-lib
+        # closure the compiler itself depends on, found via its own built-in
+        # search path) ahead of this sysroot's static archive; that host .so
+        # references glibc symbol versions above this project's floor, so the
+        # link fails outright rather than merely producing an unwanted
+        # dynamic dependency. Bracketing the whole --libs output in
+        # -Bstatic/-Bdynamic is not an option either: this manylinux sysroot
+        # intentionally ships no static libpthread.a/libm.a/libdl.a (those
+        # stay dynamic, matching the artifact's host-assisted contract), so a
+        # blanket -Bstatic makes the linker fail looking for archives that
+        # were never meant to exist. Strip the bare -lstdc++ token and link
+        # the sysroot's own static libstdc++/libsupc++/libgcc archives (built
+        # by manylinux-2-28-gcc-runtime.nix, the same ones the compat
+        # stdenv's NIX_CFLAGS_LINK "-static-libgcc -static-libstdc++" targets
+        # for a C++-frontend link) by absolute path instead, so -l resolution
+        # mode never enters into it for these three.
+        gl_cflags="$(pkg-config --static --cflags gl)"
+        gl_libs="$(pkg-config --static --libs gl | tr ' ' '\n' | grep -v '^-lstdc++$' | tr '\n' ' ')"
+        $CC -O2 $gl_cflags -Wl,--allow-multiple-definition ${./glx-render.c} \
+          $gl_libs \
           ${target.libxau}/lib/libXau.a ${target.libxdmcp}/lib/libXdmcp.a \
-          -static-libgcc -static-libstdc++ \
+          -Wl,--start-group \
+          ${toolchain.gccRuntime.runtime}/lib/libstdc++.a \
+          ${toolchain.gccRuntime.runtime}/lib/libsupc++.a \
+          ${toolchain.gccRuntime.runtime}/lib/libgcc.a \
+          -Wl,--end-group \
           -o glx-render-test
         runHook postBuild
       '';
