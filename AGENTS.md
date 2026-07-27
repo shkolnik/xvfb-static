@@ -205,6 +205,8 @@ rather than its own.
 | `nix/manylinux-2-28-stdenv.nix` | Builds the stdenv that targets the sysroot, including build and deployment loader paths. |
 | `nix/manylinux-2-28-gcc-runtime.nix` | Supplies the GCC runtime pieces the sysroot does not carry. |
 | `nix/manylinux-2-28-packages.nix` | The package set built against that stdenv. |
+| `nix/manylinux-2-28-umoci.nix` | The one patched-umoci derivation, applied at build time to the sysroot unpacker and independently exercised by the fixture that proves the patch. |
+| `nix/manylinux-2-28-static-overrides.nix` | Small package overrides needed at more than one call site in the external Vulkan build: dropping libXfont2's uninstalled lsfontdir helper, disabling pixman's tests, and libdrm without Intel/Valgrind support. |
 | `scripts/update-manylinux-2-28-lock.sh` | Prints a refreshed lock to stdout for review; it does not write the file. |
 
 ### Patches
