@@ -22,6 +22,16 @@ let
     targetPkgs = pkgs;
     hostPkgs = hostPkgs;
   };
+  manifest = import ./nix/manifest.nix { inherit (pkgs) lib; };
+  # Single source for the fields that used to be written twice -- once in
+  # passthru, once in the manifest jq filter -- with nothing checking the
+  # two copies agreed.
+  variant = "glx";
+  maturity = "alpha";
+  renderer = "zink";
+  graphicsBackend = "external-vulkan";
+  runtimeModel = "host-assisted";
+  requiredGraphicsLibrary = "libvulkan.so.1";
   bzip2Static = pkgs.bzip2.override { enableStatic = true; };
   opensslStatic = (pkgs.openssl.override { static = true; }).overrideAttrs (old: {
     configureFlags = (old.configureFlags or [ ]) ++ [ "no-tests" ];
@@ -155,6 +165,17 @@ endif" "message('Skipping unshipped Xserver test targets')"
   releaseVersion = standardPackage.releaseVersion;
   releaseRevision = standardPackage.releaseRevision;
 in
+# The manifest's `version` field (releaseVersion, above) is derived from the
+# *standard* variant's own patched Xvfb, built against hostPkgs.pkgsStatic,
+# while its `xorg-server` component field (xvfbGlx.version, below) is derived
+# from this build's independently evaluated GLX-patched Xvfb, built against
+# the manylinux target package set. Both describe the same upstream X.Org
+# Server release; nothing enforced that agreement before this assertion.
+assert pkgs.lib.assertMsg (xvfbGlx.version == standardPackage.upstreamVersion) ''
+  xvfb-static: GLX external-Vulkan Xvfb build reports X.Org Server version
+  ${xvfbGlx.version}, but the standard static package reports
+  ${standardPackage.upstreamVersion}. The manifest's version and xorg-server
+  fields would disagree.'';
 pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   nativeBuildInputs = [
     hostPkgs.gnutar
@@ -170,11 +191,7 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
     inherit releaseRevision releaseVersion;
     upstreamVersion = xvfbGlx.version;
     mesaVersion = mesaZink.version;
-    variant = "glx";
-    maturity = "alpha";
-    renderer = "zink";
-    graphicsBackend = "external-vulkan";
-    runtimeModel = "host-assisted";
+    inherit variant maturity renderer graphicsBackend runtimeModel;
   };
 } ''
   set -euo pipefail
@@ -259,19 +276,14 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
     exit 1
   fi
 
-  files=$(cd $out && find . -type f | cut -c3- | {
-    cat
-    echo share/xvfb-static/manifest.json
-  } | LC_ALL=C sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
-  jq -n \
-    --arg arch "${pkgs.stdenv.hostPlatform.parsed.cpu.name}" \
-    --arg version "${releaseVersion}" \
-    --argjson revision ${toString releaseRevision} \
-    --arg xorg_version "${xvfbGlx.version}" \
-    --arg mesa_version "${mesaZink.version}" \
-    --arg glibc_symbol_floor "$glibc_symbol_floor" \
-    --argjson files "$files" \
-    --argjson keyboard_profiles '${builtins.toJSON profiles}' \
-    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,variant:"glx",maturity:"alpha",renderer:"zink",graphics_backend:"external-vulkan",runtime_model:"host-assisted",glibc_symbol_floor:$glibc_symbol_floor,required_graphics_library:"libvulkan.so.1",components:{"xorg-server":$xorg_version,mesa:$mesa_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
-    > $out/share/xvfb-static/manifest.json
+  ${manifest.mkManifestScript {
+    arch = "${pkgs.stdenv.hostPlatform.parsed.cpu.name}";
+    version = releaseVersion;
+    revision = releaseRevision;
+    xorgVersion = xvfbGlx.version;
+    mesaVersion = mesaZink.version;
+    glibcSymbolFloorVar = "glibc_symbol_floor";
+    inherit variant maturity renderer graphicsBackend runtimeModel requiredGraphicsLibrary;
+    inherit profiles;
+  }}
 ''

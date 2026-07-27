@@ -6,6 +6,15 @@ let
   static = pkgs.pkgsStatic;
   mesaLLVMpipe = import ./mesa-llvmpipe.nix { inherit system pkgs; };
   targetLLVM = mesaLLVMpipe.targetLLVM;
+  manifest = import ./nix/manifest.nix { inherit (pkgs) lib; };
+  # Single source for the fields that used to be written twice -- once in
+  # passthru, once in the manifest jq filter -- with nothing checking the
+  # two copies agreed.
+  variant = "glx";
+  maturity = "alpha";
+  renderer = "llvmpipe";
+  graphicsBackend = "embedded";
+  runtimeModel = "fully-static";
   catalog = import ./nix/keymap-catalog.nix {
     inherit (pkgs) lib;
     inherit (static) runCommand xkbcomp xkeyboard_config;
@@ -69,6 +78,16 @@ let
     pkgs.perl
   ];
 in
+# The manifest's `version` field (releaseVersion, above) is derived from the
+# *standard* variant's own patched Xvfb, while its `xorg-server` component
+# field (xvfbGlx.version, below) is derived from this build's independently
+# evaluated GLX-patched Xvfb. Both describe the same upstream X.Org Server
+# release; nothing enforced that agreement before this assertion.
+assert pkgs.lib.assertMsg (xvfbGlx.version == standardPackage.upstreamVersion) ''
+  xvfb-static: GLX llvmpipe Xvfb build reports X.Org Server version
+  ${xvfbGlx.version}, but the standard static package reports
+  ${standardPackage.upstreamVersion}. The manifest's version and xorg-server
+  fields would disagree.'';
 static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
   inherit nativeBuildInputs;
   passthru = {
@@ -76,11 +95,7 @@ static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
     upstreamVersion = xvfbGlx.version;
     mesaVersion = mesaLLVMpipe.version;
     llvmVersion = targetLLVM.version;
-    variant = "glx";
-    maturity = "alpha";
-    renderer = "llvmpipe";
-    graphicsBackend = "embedded";
-    runtimeModel = "fully-static";
+    inherit variant maturity renderer graphicsBackend runtimeModel;
   };
 } ''
   set -euo pipefail
@@ -130,19 +145,14 @@ static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
   extract_license ${static.stdenv.cc.cc.src} COPYING3 $L/libstdc++-COPYING3
   extract_license ${static.stdenv.cc.cc.src} COPYING.RUNTIME $L/libstdc++-COPYING.RUNTIME
 
-  files=$(cd $out && find . -type f | cut -c3- | {
-    cat
-    echo share/xvfb-static/manifest.json
-  } | LC_ALL=C sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
-  jq -n \
-    --arg arch "${static.stdenv.hostPlatform.parsed.cpu.name}" \
-    --arg version "${releaseVersion}" \
-    --argjson revision ${toString releaseRevision} \
-    --arg xorg_version "${xvfbGlx.version}" \
-    --arg mesa_version "${mesaLLVMpipe.version}" \
-    --arg llvm_version "${targetLLVM.version}" \
-    --argjson files "$files" \
-    --argjson keyboard_profiles '${builtins.toJSON profiles}' \
-    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,variant:"glx",maturity:"alpha",renderer:"llvmpipe",graphics_backend:"embedded",runtime_model:"fully-static",components:{"xorg-server":$xorg_version,mesa:$mesa_version,llvm:$llvm_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
-    > $out/share/xvfb-static/manifest.json
+  ${manifest.mkManifestScript {
+    arch = "${static.stdenv.hostPlatform.parsed.cpu.name}";
+    version = releaseVersion;
+    revision = releaseRevision;
+    xorgVersion = xvfbGlx.version;
+    mesaVersion = mesaLLVMpipe.version;
+    llvmVersion = targetLLVM.version;
+    inherit variant maturity renderer graphicsBackend runtimeModel;
+    inherit profiles;
+  }}
 ''

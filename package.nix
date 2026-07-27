@@ -4,6 +4,7 @@
 , corruptEmbeddedProfile ? null
 }:
 let
+  manifest = import ./nix/manifest.nix { inherit lib; };
   catalog = import ./nix/keymap-catalog.nix {
     inherit lib runCommand xkbcomp xkeyboard_config corruptEmbeddedProfile;
   };
@@ -67,13 +68,13 @@ in runCommand "xvfb-static-${releaseVersion}" {
   extract_license ${libxfont_2.src} COPYING $L/libXfont2.COPYING
   extract_license ${libxcvt.src} COPYING $L/libxcvt.COPYING
   extract_license ${pixman.src} COPYING $L/pixman.COPYING
-  extract_license ${zlib.src} LICENSE $L/zlib.COPYING
+  extract_license ${zlib.src} LICENSE $L/zlib.LICENSE
   extract_license ${libmd.src} COPYING $L/libmd.COPYING
-  files=$(cd $out && find . -type f | cut -c3- | { cat; echo share/xvfb-static/manifest.json; } | LC_ALL=C sort -u | jq -R -s 'split("\n") | map(select(length > 0))')
-  jq -n --arg arch "${stdenv.hostPlatform.parsed.cpu.name}" \
-    --arg version "${releaseVersion}" --argjson revision ${toString releaseRevision} \
-    --arg xorg_version "${xvfbPatched.version}" --argjson files "$files" \
-    --argjson keyboard_profiles '${builtins.toJSON profiles}' \
-    '{name:"xvfb-static",version:$version,revision:$revision,schema_version:2,arch:$arch,components:{"xorg-server":$xorg_version},keyboard:{default:"us",profiles:$keyboard_profiles},files:$files}' \
-    > $out/share/xvfb-static/manifest.json
+  ${manifest.mkManifestScript {
+    arch = "${stdenv.hostPlatform.parsed.cpu.name}";
+    version = releaseVersion;
+    revision = releaseRevision;
+    xorgVersion = xvfbPatched.version;
+    inherit profiles;
+  }}
 ''
