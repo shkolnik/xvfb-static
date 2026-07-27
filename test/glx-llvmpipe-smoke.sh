@@ -2,6 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$root/test/images.sh"
 archive="${1:-}"
 render_test="${2:-$root/result-glx-render-test/bin/glx-render-test}"
 if [[ -z "$archive" ]]; then
@@ -33,7 +34,7 @@ jq -e '.variant == "glx" and .maturity == "alpha" and .renderer == "llvmpipe"' \
 docker run --name "$name" --rm \
   -e GALLIUM_DRIVER=llvmpipe \
   -v "$tmp":/package:ro \
-  alpine:3.22 sh -eu -c '
+  "$XVFB_STATIC_ALPINE_IMAGE" sh -eu -c '
     /package/bin/Xvfb :99 +iglx -screen 0 64x64x24 >/tmp/xvfb.log 2>&1 &
     pid=$!
     trap "kill $pid 2>/dev/null || true" EXIT

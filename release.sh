@@ -7,7 +7,8 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$root/scripts/release-tag.sh"
 remote="origin"
 branch="main"
-image="nixos/nix@sha256:22c0a3a816eb3d315eb6720d2a58a3c3b622c9717c578f3c80b687668c6da277"
+# Single source of truth for the pinned build container; see build-image.txt.
+image="$(cat "$root/build-image.txt")"
 dry_run=false
 
 if [[ "${1:-}" == "--dry-run" && $# -eq 1 ]]; then
@@ -187,6 +188,8 @@ fi
 mapfile -t release_scripts < <(git ls-files '*.sh')
 test "${#release_scripts[@]}" -gt 0
 bash -n "${release_scripts[@]}"
+# A release must not pull an image by mutable tag; see test/images.sh.
+"$root/test/docker-image-pins.sh"
 git diff --check
 if [[ -n "$(git status --short)" ]]; then
   echo "release preparation left unexpected worktree changes" >&2
