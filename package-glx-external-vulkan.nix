@@ -5,6 +5,8 @@
 , nixpkgsSource ? (builtins.getFlake (toString ./.)).inputs.nixpkgs
 }:
 let
+  staticOverrides = import ./nix/manylinux-2-28-static-overrides.nix;
+  inherit (staticOverrides) noLsfontdir noPixmanTests noIntelNoValgrindLibdrm;
   packageSets = import ./nix/manylinux-2-28-packages.nix {
     inherit system nixpkgsSource;
   };
@@ -49,37 +51,16 @@ let
   });
   # Xvfb's fixed nixpkgs dependency graph can retain the unmodified
   # libXfont2 derivation even when the package-set overlay replaces the public
-  # attribute.  Patch the exact dependency at the Xvfb boundary as well, so
-  # its uninstalled lsfontdir helper cannot introduce an incomplete Brotli
-  # static link.
-  libxfont2Static = pkgs.libxfont_2.overrideAttrs (old: {
-    postPatch = (old.postPatch or "") + ''
-      substituteInPlace Makefile.in \
-        --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
-    '';
-    postConfigure = (old.postConfigure or "") + ''
-      find . -name Makefile -type f -exec sed -i \
-        's/noinst_PROGRAMS = lsfontdir/noinst_PROGRAMS =/' {} +
-    '';
-  });
-  pixmanStatic = pkgs.pixman.overrideAttrs (old: {
-    mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dtests=disabled" ];
-    postPatch = (old.postPatch or "") + ''
-      sed -i \
-        -e "s/if not get_option('tests').disabled()/if false/" \
-        -e "s/if not get_option('tests').disabled() or not get_option('demos').disabled()/if not get_option('demos').disabled()/" \
-        meson.build
-    '';
-  });
+  # attribute.  Patch the exact dependency at the Xvfb boundary as well; see
+  # nix/manylinux-2-28-static-overrides.nix.
+  libxfont2Static = noLsfontdir pkgs.libxfont_2;
+  pixmanStatic = noPixmanTests pkgs.pixman;
   valgrindStatic = pkgs.valgrind.overrideAttrs (_old: {
     # Valgrind is a build-time libdrm check dependency here; its own test
     # suite expects the host development resolver library and is not shipped.
     doCheck = false;
   });
-  libdrmStatic = pkgs.libdrm.override {
-    withIntel = false;
-    withValgrind = false;
-  };
+  libdrmStatic = noIntelNoValgrindLibdrm pkgs.libdrm;
   prepareDependencies = dependencies:
     builtins.filter (dependency: (dependency.pname or "") != "libglvnd")
       (map (dependency:

@@ -7,17 +7,7 @@
 }:
 
 let
-  patchedUmoci = hostPkgs.umoci.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [
-      ../patches/umoci-0001-rootless-mask-privileged-mode-bits.patch
-    ];
-    doCheck = true;
-    checkPhase = ''
-      runHook preCheck
-      go test ./oci/layer -run '^TestModeForUnpack$'
-      runHook postCheck
-    '';
-  });
+  patchedUmoci = import ../nix/manylinux-2-28-umoci.nix { inherit hostPkgs; };
 in
 hostPkgs.runCommand "manylinux-2-28-umoci-fixture" {
   nativeBuildInputs = [

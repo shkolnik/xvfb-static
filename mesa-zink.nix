@@ -3,6 +3,8 @@
 , hostPkgs ? null
 }:
 let
+  staticOverrides = import ./nix/manylinux-2-28-static-overrides.nix;
+  inherit (staticOverrides) noLsfontdir noPixmanTests noIntelNoValgrindLibdrm;
   providedTargetPkgs = targetPkgs;
   providedHostPkgs = hostPkgs;
   packageSets =
@@ -41,53 +43,15 @@ let
             (flag: flag != "--enable-static" && flag != "--disable-shared")
             (old.configureFlags or [ ]);
         });
-        libdrm = previous.libdrm.override {
-          withIntel = false;
-          withValgrind = false;
-        };
-        # Pixman's test executables are not incorporated into Xvfb and their
-        # static libpng link omits libz. The packaged GLX render test exercises
-        # the incorporated pixman library at the product boundary.
-        pixman = previous.pixman.overrideAttrs (old: {
-          mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dtests=disabled" ];
-          # Some nixpkgs pixman revisions still enter the test subdirectory
-          # despite the option above when cross-building.  Those test
-          # executables are build-only and pull in host OpenMP/zlib details;
-          # remove the subdirectory explicitly for this static target.
-          postPatch = (old.postPatch or "") + ''
-            sed -i \
-              -e "s/if not get_option('tests').disabled()/if false/" \
-              -e "s/if not get_option('tests').disabled() or not get_option('demos').disabled()/if not get_option('demos').disabled()/" \
-              meson.build
-          '';
-        });
+        libdrm = noIntelNoValgrindLibdrm previous.libdrm;
+        pixman = noPixmanTests previous.pixman;
         # libXfont2 unconditionally builds an uninstalled lsfontdir test
-        # utility. Its static FreeType/Brotli link is incomplete, while the
-        # library itself is incorporated into and exercised through Xvfb.
-        libXfont2 = previous.libXfont2.overrideAttrs (old: {
-          postPatch = (old.postPatch or "") + ''
-            substituteInPlace Makefile.in \
-              --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
-          '';
-          postConfigure = (old.postConfigure or "") + ''
-            # configure regenerates Makefile from Makefile.am, so enforce the
-            # same omission on the generated files before the static build.
-            find . -name Makefile -type f -exec sed -i \
-              's/noinst_PROGRAMS = lsfontdir/noinst_PROGRAMS =/' {} +
-          '';
-        });
-        # Keep the lowercase nixpkgs compatibility alias on the same patched
-        # derivation; some X.Org packages refer to one spelling or the other.
-        libxfont_2 = previous.libXfont2.overrideAttrs (old: {
-          postPatch = (old.postPatch or "") + ''
-            substituteInPlace Makefile.in \
-              --replace-fail 'noinst_PROGRAMS = lsfontdir' 'noinst_PROGRAMS ='
-          '';
-          postConfigure = (old.postConfigure or "") + ''
-            find . -name Makefile -type f -exec sed -i \
-              's/noinst_PROGRAMS = lsfontdir/noinst_PROGRAMS =/' {} +
-          '';
-        });
+        # utility whose static FreeType/Brotli link is incomplete; see
+        # nix/manylinux-2-28-static-overrides.nix. Keep the lowercase nixpkgs
+        # compatibility alias on the same patched derivation -- some X.Org
+        # packages refer to one spelling or the other.
+        libXfont2 = noLsfontdir previous.libXfont2;
+        libxfont_2 = noLsfontdir previous.libXfont2;
         # libffi's checks add DejaGNU/Expect and a build-platform Tcl whose
         # shared-library assumptions are incompatible with this static stdenv.
         # The final Xvfb render/readback test exercises the incorporated FFI
