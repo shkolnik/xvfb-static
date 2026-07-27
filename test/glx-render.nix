@@ -97,6 +97,7 @@ let
         target.libxext
         target.libxfixes
         target.libxxf86vm
+        target.libxshmfence
         target.libxau
         target.libxdmcp
         target.brotli
