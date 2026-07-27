@@ -1,9 +1,12 @@
-{ xvfb, runCommand, xkeyboard_config, stdenv, gnutar, gzip, jq, pixman, zlib, libmd
+{ lib, xvfb, runCommand, xkeyboard_config, stdenv, gnutar, gzip, jq, pixman, zlib, libmd
 , xkbcomp, libxcvt, xorg-server, libx11, libxext, libxfont_2
 , corruptEmbeddedProfile ? null
 }:
 let
-  profiles = import ./keyboard-profiles.nix;
+  catalog = import ./nix/keymap-catalog.nix {
+    inherit lib runCommand xkbcomp xkeyboard_config corruptEmbeddedProfile;
+  };
+  profiles = catalog.profiles;
   libxcvtStatic = libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -15,27 +18,6 @@ let
       (map (dependency:
         if (dependency.pname or "") == "libxcvt" then libxcvtStatic else dependency
       ) dependencies);
-  profileInputs = map (profile: profile // {
-    symbolInclude = profile.layout + (if profile.variant == "" then "" else "(${profile.variant})");
-  }) profiles;
-  keymapBlobs = runCommand "xvfb-static-keymaps" {
-    nativeBuildInputs = [ xkbcomp ];
-  } ''
-    mkdir -p $out
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      cat > ${profile.id}.xkb <<'EOF'
-      xkb_keymap "${profile.id}" {
-        xkb_keycodes { include "evdev+aliases(qwerty)" };
-        xkb_types { include "complete" };
-        xkb_compatibility { include "complete" };
-        xkb_symbols { include "pc+${profile.symbolInclude}+inet(evdev)" };
-        xkb_geometry { include "pc(pc105)" };
-      };
-      EOF
-      xkbcomp -I${xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
-      test -s $out/${profile.id}.xkm
-    '') profileInputs)}
-  '';
   xvfbPatched = xvfb.overrideAttrs (old: {
     pname = "xvfb-static";
     buildInputs = prepareXvfbDependencies (old.buildInputs or [ ]);
@@ -47,26 +29,7 @@ let
       ./patches/xserver-0003-keyboard-profile-option.patch
       ./patches/xserver-0004-component-log-prefixes.patch
     ];
-    postPatch = (old.postPatch or "") + ''
-      header=xkb/xvfb_static_keymap_blob.h
-      : > "$header"
-      ${builtins.concatStringsSep "\n" (map (profile: ''
-        echo 'static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}[] = {' >> "$header"
-        od -An -v -tu1 ${keymapBlobs}/${profile.id}.xkm | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/' >> "$header"
-        echo '};' >> "$header"
-      '') profiles)}
-      cat >> "$header" <<'EOF'
-      struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };
-      static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {
-      EOF
-      ${builtins.concatStringsSep "\n" (map (profile: ''
-        echo '{ "${profile.id}", xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}, sizeof(xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}) },' >> "$header"
-      '') profiles)}
-      echo '};' >> "$header"
-      ${if corruptEmbeddedProfile == null then "" else ''
-        sed -i '/static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] corruptEmbeddedProfile}/ { n; s/[0-9][0-9]*/0/; }' "$header"
-      ''}
-    '';
+    postPatch = (old.postPatch or "") + catalog.header;
   });
   releaseRevision = 4;
   releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
@@ -84,18 +47,7 @@ in runCommand "xvfb-static-${releaseVersion}" {
   cp ${xvfbPatched}/bin/Xvfb $out/bin/Xvfb
   chmod u+w $out/bin/Xvfb
   ${strip} --strip-all $out/bin/Xvfb
-  extract_license() {
-    src="$1"; rel="$2"; dest="$3"
-    if [ -d "$src" ]; then
-      test -s "$src/$rel"
-      cp "$src/$rel" "$dest"
-    else
-      matches="$(tar -tf "$src" --wildcards "*/$rel")"
-      test "$(printf '%s\n' "$matches" | grep -c .)" -eq 1
-      tar -xf "$src" -O "$matches" > "$dest"
-      test -s "$dest"
-    fi
-  }
+  ${builtins.readFile ./nix/extract-license.sh}
   L=$out/share/xvfb-static/licenses
   extract_license ${xorg-server.src} COPYING $L/xorg-server.COPYING
   extract_license ${xkbcomp.src} COPYING $L/xkbcomp.COPYING

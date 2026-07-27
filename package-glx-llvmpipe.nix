@@ -1,11 +1,17 @@
-{ system ? builtins.currentSystem }:
+# See mesa-llvmpipe.nix for why pkgs is a parameter with a getFlake default.
+{ system ? builtins.currentSystem
+, pkgs ? import (builtins.getFlake (toString ./.)).inputs.nixpkgs { inherit system; }
+}:
 let
-  flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs { inherit system; };
   static = pkgs.pkgsStatic;
-  mesaLLVMpipe = import /src/mesa-llvmpipe.nix { inherit system; };
+  mesaLLVMpipe = import ./mesa-llvmpipe.nix { inherit system pkgs; };
   targetLLVM = mesaLLVMpipe.targetLLVM;
-  profiles = import /src/keyboard-profiles.nix;
+  catalog = import ./nix/keymap-catalog.nix {
+    inherit (pkgs) lib;
+    inherit (static) runCommand xkbcomp xkeyboard_config;
+    name = "xvfb-static-glx-keymaps";
+  };
+  profiles = catalog.profiles;
   libxcvtStatic = static.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -17,27 +23,6 @@ let
       (map (dependency:
         if (dependency.pname or "") == "libxcvt" then libxcvtStatic else dependency
       ) dependencies);
-  profileInputs = map (profile: profile // {
-    symbolInclude = profile.layout + (if profile.variant == "" then "" else "(${profile.variant})");
-  }) profiles;
-  keymapBlobs = static.runCommand "xvfb-static-glx-keymaps" {
-    nativeBuildInputs = [ static.xkbcomp ];
-  } ''
-    mkdir -p $out
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      cat > ${profile.id}.xkb <<'EOF'
-      xkb_keymap "${profile.id}" {
-        xkb_keycodes { include "evdev+aliases(qwerty)" };
-        xkb_types { include "complete" };
-        xkb_compatibility { include "complete" };
-        xkb_symbols { include "pc+${profile.symbolInclude}+inet(evdev)" };
-        xkb_geometry { include "pc(pc105)" };
-      };
-      EOF
-      xkbcomp -I${static.xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
-      test -s $out/${profile.id}.xkm
-    '') profileInputs)}
-  '';
   xvfbGlx = static.xvfb.overrideAttrs (old: {
   pname = "xvfb-static-glx-llvmpipe";
   NIX_LDFLAGS = (old.NIX_LDFLAGS or "") + " -lstdc++";
@@ -53,38 +38,23 @@ let
     "-Dc_link_args=-Wl,--allow-multiple-definition"
   ];
   patches = (old.patches or [ ]) ++ [
-    /src/patches/xserver-0001-xkb-env-overrides.patch
-    /src/patches/xserver-0002-embedded-keymap.patch
-    /src/patches/xserver-0003-keyboard-profile-option.patch
-    /src/patches/xserver-0004-component-log-prefixes.patch
-    /src/patches/xserver-0004-linked-swrast.patch
+    ./patches/xserver-0001-xkb-env-overrides.patch
+    ./patches/xserver-0002-embedded-keymap.patch
+    ./patches/xserver-0003-keyboard-profile-option.patch
+    ./patches/xserver-0004-component-log-prefixes.patch
+    ./patches/xserver-0005-linked-swrast.patch
   ];
   postPatch = (old.postPatch or "") + ''
     substituteInPlace hw/vfb/meson.build \
       --replace-fail 'dependencies: common_dep,' \
       "dependencies: common_dep, link_args: '-Wl,--gc-sections',"
-    header=xkb/xvfb_static_keymap_blob.h
-    : > "$header"
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      echo 'static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}[] = {' >> "$header"
-      od -An -v -tu1 ${keymapBlobs}/${profile.id}.xkm | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/' >> "$header"
-      echo '};' >> "$header"
-    '') profiles)}
-    cat >> "$header" <<'EOF'
-    struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };
-    static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {
-    EOF
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      echo '{ "${profile.id}", xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}, sizeof(xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}) },' >> "$header"
-    '') profiles)}
-    echo '};' >> "$header"
-  '';
+  '' + catalog.header;
   postInstall = (old.postInstall or "") + ''
     chmod u+w $out/bin/Xvfb
     ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
   '';
   });
-  standardPackage = static.callPackage /src/package.nix { };
+  standardPackage = static.callPackage ./package.nix { };
   releaseVersion = standardPackage.releaseVersion;
   releaseRevision = standardPackage.releaseRevision;
   nativeBuildInputs = [
@@ -115,36 +85,7 @@ static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
   chmod u+w $out/bin/Xvfb
   ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
 
-  extract_license() {
-    src="$1"; rel="$2"; dest="$3"
-    if [ -d "$src" ]; then
-      test -s "$src/$rel"
-      cp "$src/$rel" "$dest"
-    else
-      matches="$(tar -tf "$src" | while IFS= read -r member; do
-        # Treat rel as relative to the source root. Release archives commonly
-        # wrap that root in one directory, but nested files with the same
-        # basename (notably GCC's several COPYING3 files) are not equivalent.
-        case "$member" in
-          "$rel") printf '%s\n' "$member" ;;
-          */"$rel")
-            prefix="''${member%/"$rel"}"
-            case "$prefix" in
-              */*) ;;
-              *) printf '%s\n' "$member" ;;
-            esac
-            ;;
-        esac
-      done)"
-      match_count="$(printf '%s\n' "$matches" | awk 'NF { count++ } END { print count + 0 }')"
-      if [ "$match_count" -ne 1 ]; then
-        echo "xvfb-static: expected exactly one $rel in $src, found $match_count" >&2
-        exit 1
-      fi
-      tar -xf "$src" -O "$matches" > "$dest"
-      test -s "$dest"
-    fi
-  }
+  ${builtins.readFile ./nix/extract-license.sh}
 
   L=$out/share/xvfb-static/licenses
   extract_license ${static.xorg-server.src} COPYING $L/xorg-server.COPYING

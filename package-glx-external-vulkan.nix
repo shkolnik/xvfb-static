@@ -1,6 +1,13 @@
-{ system ? builtins.currentSystem }:
+# See mesa-llvmpipe.nix for why nixpkgsSource is a parameter with a getFlake
+# default: passing the flake's own locked input in keeps this out of an
+# unlocked self-referential getFlake, which is what forced --impure.
+{ system ? builtins.currentSystem
+, nixpkgsSource ? (builtins.getFlake (toString ./.)).inputs.nixpkgs
+}:
 let
-  packageSets = import /src/nix/manylinux-2-28-packages.nix { inherit system; };
+  packageSets = import ./nix/manylinux-2-28-packages.nix {
+    inherit system nixpkgsSource;
+  };
   # Target libraries are built by the manylinux compatibility stdenv.  Keep
   # native executables (build tools and archive assembly) on the ordinary host
   # package set; this is the only package-set boundary used by this derivation.
@@ -8,7 +15,7 @@ let
   hostPkgs = packageSets.hostPkgs;
   toolchain = packageSets.toolchain;
   static = hostPkgs.pkgsStatic;
-  mesaZink = import /src/mesa-zink.nix {
+  mesaZink = import ./mesa-zink.nix {
     inherit system;
     targetPkgs = pkgs;
     hostPkgs = hostPkgs;
@@ -18,7 +25,12 @@ let
     configureFlags = (old.configureFlags or [ ]) ++ [ "no-tests" ];
     doCheck = false;
   });
-  profiles = import /src/keyboard-profiles.nix;
+  catalog = import ./nix/keymap-catalog.nix {
+    inherit (pkgs) lib runCommand;
+    inherit (hostPkgs) xkbcomp xkeyboard_config;
+    name = "xvfb-static-glx-external-vulkan-keymaps";
+  };
+  profiles = catalog.profiles;
   libxcvtStatic = pkgs.libxcvt.overrideAttrs (old: {
     meta = old.meta // { badPlatforms = [ ]; };
     postPatch = (old.postPatch or "") + ''
@@ -80,38 +92,27 @@ let
       "-Dxkb_dir=${hostPkgs.xkeyboard_config}/share/X11/xkb"
     else
       flag;
-  profileInputs = map (profile: profile // {
-    symbolInclude = profile.layout + (if profile.variant == "" then "" else "(${profile.variant})");
-  }) profiles;
-  keymapBlobs = pkgs.runCommand "xvfb-static-glx-external-vulkan-keymaps" {
-    # xkbcomp and its source data generate embedded bytes at build time; they
-    # are not linked into the target and must use the normal native toolchain.
-    nativeBuildInputs = [ hostPkgs.xkbcomp ];
-  } ''
-    mkdir -p $out
-    ${builtins.concatStringsSep "\n" (map (profile: ''
-      cat > ${profile.id}.xkb <<'EOF'
-      xkb_keymap "${profile.id}" {
-        xkb_keycodes { include "evdev+aliases(qwerty)" };
-        xkb_types { include "complete" };
-        xkb_compatibility { include "complete" };
-        xkb_symbols { include "pc+${profile.symbolInclude}+inet(evdev)" };
-        xkb_geometry { include "pc(pc105)" };
-      };
-      EOF
-      xkbcomp -I${hostPkgs.xkeyboard_config}/share/X11/xkb -xkm ${profile.id}.xkb $out/${profile.id}.xkm
-      test -s $out/${profile.id}.xkm
-    '') profileInputs)}
-  '';
   # The package boundary rewrites the build-time sysroot loader to the
   # deployment path selected by the compatibility stdenv. Keep this single
   # source of truth rather than duplicating an architecture conditional here.
   interpreter = toolchain.deploymentLoader;
   xvfbGlx = pkgs.xvfb.overrideAttrs (old: {
     pname = "xvfb-static-glx-external-vulkan";
-    # Mesa's pkg-config metadata adds libstdc++ at the final GL/Zink link;
-    # keeping it out of the global compiler probe lets Meson test plain C
-    # programs without forcing a C++ archive into every probe.
+    # Unlike the llvmpipe variant, this one deliberately does NOT append
+    # -lstdc++ to NIX_LDFLAGS. Mesa's pkg-config metadata adds libstdc++ at the
+    # final GL/Zink link, and keeping it out of the global linker flags lets
+    # Meson probe plain C programs without forcing a C++ archive into every
+    # probe. The C++ runtime is pulled in statically at link time instead.
+    #
+    # The assignment below reads as a no-op and nearly is: it sets NIX_LDFLAGS
+    # to its own value. It is retained deliberately. pkgs.xvfb carries no
+    # NIX_LDFLAGS attribute, so `or ""` defines the variable as empty rather
+    # than leaving it undefined, and dropping the line changes this
+    # derivation's hash. cc-wrapper treats empty and undefined identically, so
+    # the built bytes would not change -- but proving that costs a full Mesa
+    # and manylinux rebuild, and there is nothing to gain by spending it. If
+    # you are already rebuilding this variant for another reason, delete the
+    # line then and compare the archive checksum.
     NIX_LDFLAGS = old.NIX_LDFLAGS or "";
     NIX_CFLAGS_LINK = (old.NIX_CFLAGS_LINK or "") + " -static-libgcc -static-libstdc++";
     buildInputs = prepareDependencies (old.buildInputs or [ ]) ++ [
@@ -139,11 +140,11 @@ let
       "-Dc_link_args=-Wl,--allow-multiple-definition"
     ];
     patches = (old.patches or [ ]) ++ [
-      /src/patches/xserver-0001-xkb-env-overrides.patch
-      /src/patches/xserver-0002-embedded-keymap.patch
-      /src/patches/xserver-0003-keyboard-profile-option.patch
-      /src/patches/xserver-0004-component-log-prefixes.patch
-      /src/patches/xserver-0004-linked-swrast.patch
+      ./patches/xserver-0001-xkb-env-overrides.patch
+      ./patches/xserver-0002-embedded-keymap.patch
+      ./patches/xserver-0003-keyboard-profile-option.patch
+      ./patches/xserver-0004-component-log-prefixes.patch
+      ./patches/xserver-0005-linked-swrast.patch
     ];
     postPatch = (old.postPatch or "") + ''
       substituteInPlace meson.build \
@@ -162,27 +163,14 @@ endif" "message('Skipping unshipped Xserver test targets')"
       substituteInPlace hw/vfb/meson.build \
         --replace-fail 'dependencies: common_dep,' \
         "dependencies: common_dep, link_args: ['-Wl,--gc-sections', '${pkgs.lib.getLib bzip2Static}/lib/libbz2.a', '${pkgs.lib.getLib opensslStatic}/lib/libcrypto.a'],"
-      header=xkb/xvfb_static_keymap_blob.h
-      : > "$header"
-      ${builtins.concatStringsSep "\n" (map (profile: ''
-        echo 'static const unsigned char xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}[] = {' >> "$header"
-        od -An -v -tu1 ${keymapBlobs}/${profile.id}.xkm | tr -s ' ' | sed 's/ /,/g; s/^,//; s/$/,/' >> "$header"
-        echo '};' >> "$header"
-      '') profiles)}
-      echo 'struct xvfb_static_keymap_entry { const char *id; const unsigned char *data; size_t size; };' >> "$header"
-      echo 'static const struct xvfb_static_keymap_entry xvfb_static_keymaps[] = {' >> "$header"
-      ${builtins.concatStringsSep "\n" (map (profile: ''
-        echo '{ "${profile.id}", xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}, sizeof(xvfb_static_keymap_${builtins.replaceStrings ["-"] ["_"] profile.id}) },' >> "$header"
-      '') profiles)}
-      echo '};' >> "$header"
-    '';
+    '' + catalog.header;
     postInstall = (old.postInstall or "") + ''
       chmod u+w $out/bin/Xvfb
       ${hostPkgs.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
       patchelf --set-interpreter ${interpreter} --remove-rpath $out/bin/Xvfb
     '';
   });
-  standardPackage = static.callPackage /src/package.nix { };
+  standardPackage = static.callPackage ./package.nix { };
   releaseVersion = standardPackage.releaseVersion;
   releaseRevision = standardPackage.releaseRevision;
 in
@@ -255,36 +243,7 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
     esac
   done <<< "$needed"
 
-  extract_license() {
-    src="$1"; rel="$2"; dest="$3"
-    if [ -d "$src" ]; then
-      test -s "$src/$rel"
-      cp "$src/$rel" "$dest"
-    else
-      matches="$(tar -tf "$src" | while IFS= read -r member; do
-        # Treat rel as relative to the source root. Release archives commonly
-        # wrap that root in one directory, but nested files with the same
-        # basename (notably GCC's several COPYING3 files) are not equivalent.
-        case "$member" in
-          "$rel") printf '%s\n' "$member" ;;
-          */"$rel")
-            prefix="''${member%/"$rel"}"
-            case "$prefix" in
-              */*) ;;
-              *) printf '%s\n' "$member" ;;
-            esac
-            ;;
-        esac
-      done)"
-      match_count="$(printf '%s\n' "$matches" | awk 'NF { count++ } END { print count + 0 }')"
-      test "$match_count" -eq 1 || {
-        echo "xvfb-static: expected exactly one $rel in $src, found $match_count" >&2
-        exit 1
-      }
-      tar -xf "$src" -O "$matches" > "$dest"
-      test -s "$dest"
-    fi
-  }
+  ${builtins.readFile ./nix/extract-license.sh}
 
   L=$out/share/xvfb-static/licenses
   extract_license ${pkgs.xorg-server.src} COPYING $L/xorg-server.COPYING

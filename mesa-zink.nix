@@ -7,14 +7,14 @@ let
   providedHostPkgs = hostPkgs;
   packageSets =
     if providedTargetPkgs == null && providedHostPkgs == null then
-      import /src/nix/manylinux-2-28-packages.nix { inherit system; }
+      import ./nix/manylinux-2-28-packages.nix { inherit system; }
     else if providedTargetPkgs != null && providedHostPkgs != null then
       { targetPkgs = providedTargetPkgs; hostPkgs = providedHostPkgs; }
     else
       throw "mesa-zink: targetPkgs and hostPkgs must be supplied together";
   target = packageSets.targetPkgs;
   host = packageSets.hostPkgs;
-  toolchain = import /src/nix/manylinux-2-28-stdenv.nix {
+  toolchain = import ./nix/manylinux-2-28-stdenv.nix {
     inherit system;
     hostPkgs = host;
   };
@@ -162,7 +162,11 @@ let
         });
       })
     ];
-  pkgs = target.extend (builtins.head targetOverrides);
+  # Apply every overlay in the list. This was `builtins.extend (builtins.head
+  # targetOverrides)`, which silently ignored anything after the first -- a
+  # trap for whoever adds the second one.
+  pkgs = builtins.foldl' (accumulated: overlay: accumulated.extend overlay)
+    target targetOverrides;
   disabled = pkgs.emptyDirectory;
   noLLVM = pkgs.llvmPackages // {
     llvm = disabled;

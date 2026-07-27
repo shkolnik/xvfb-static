@@ -1,4 +1,11 @@
 { runCommand, xkbcomp, xkeyboard_config, diffutils, xvfbStatic, corruptXvfb }:
+# The XKB source regeneration below deliberately does NOT go through
+# nix/keymap-catalog.nix, even though that module resolves the same tuples.
+# This test's value is that it derives the expected keymap independently and
+# diffs it against what the running server actually serves. Sharing the
+# resolver would make it agree with the build by construction, and it would
+# stop catching exactly the bug it exists to catch. Keep the duplication; if
+# the catalog's include mapping changes, change this to match, deliberately.
 let
   profiles = import ./keyboard-profiles.nix;
   profileIds = map (profile: profile.id) profiles;

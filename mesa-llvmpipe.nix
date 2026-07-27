@@ -1,7 +1,11 @@
-{ system ? builtins.currentSystem }:
+# pkgs is supplied by flake.nix. The default exists only so this file can also
+# be built directly with `nix build --file`, and is never forced when the flake
+# passes a package set in -- which is what keeps the flake from re-entering
+# itself through getFlake.
+{ system ? builtins.currentSystem
+, pkgs ? import (builtins.getFlake (toString ./.)).inputs.nixpkgs { inherit system; }
+}:
 let
-  flake = builtins.getFlake "path:/src";
-  pkgs = import flake.inputs.nixpkgs { inherit system; };
   static = pkgs.pkgsStatic;
   disabled = static.emptyDirectory;
   targetLLVM = static.llvmPackages.llvm.overrideAttrs (old: {

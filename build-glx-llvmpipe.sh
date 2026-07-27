@@ -22,7 +22,6 @@ output="$root/out/glx-llvmpipe-alpha/$arch"
 mkdir -p "$output"
 
 docker run --rm \
-  -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
   -e BUILD_UID="$uid" -e BUILD_GID="$gid" \
   -e CACHIX_CACHE_NAME -e CACHIX_AUTH_TOKEN -e CACHIX_SIGNING_KEY \
   -v "$root":/src -w /src \
@@ -32,8 +31,8 @@ docker run --rm \
     git config --global --add safe.directory /src
     bash /src/nix-build-cached.sh \\
       nix --extra-experimental-features 'nix-command flakes' \\
-      build 'path:/src#xvfb-static-glx-llvmpipe-alpha-$arch' \\
-      -o /src/out/glx-llvmpipe-alpha/$arch/result --option log-lines 200 --impure
+      build '.#xvfb-static-glx-llvmpipe-alpha-$arch' \\
+      -o /src/out/glx-llvmpipe-alpha/$arch/result --option log-lines 200
     rm -rf /src/out/glx-llvmpipe-alpha/$arch/package
     mkdir -p \
       /src/out/glx-llvmpipe-alpha/$arch/package/bin \

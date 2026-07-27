@@ -63,14 +63,13 @@ esac
 echo "Evaluating the pinned X.Org Server version..."
 upstream_version="$(
   docker run --rm \
-    -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
     -v "$root":/src -w /src \
     -v xvfb-static-nix:/nix \
     "$image" sh -c "
       set -eu
       git config --global --add safe.directory /src
       nix --extra-experimental-features 'nix-command flakes' \\
-        eval '.#xvfb-static-$arch.upstreamVersion' --raw --impure
+        eval '.#xvfb-static-$arch.upstreamVersion' --raw
     "
 )"
 if [[ ! "$upstream_version" =~ $RELEASE_UPSTREAM_REGEX ]]; then
@@ -168,14 +167,13 @@ fi
 
 evaluated_version="$(
   docker run --rm \
-    -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
     -v "$root":/src -w /src \
     -v xvfb-static-nix:/nix \
     "$image" sh -c "
       set -eu
       git config --global --add safe.directory /src
       nix --extra-experimental-features 'nix-command flakes' \\
-        eval '.#xvfb-static-$arch.releaseVersion' --raw --impure
+        eval '.#xvfb-static-$arch.releaseVersion' --raw
     "
 )"
 if [[ "$evaluated_version" != "$release_version" ]]; then
