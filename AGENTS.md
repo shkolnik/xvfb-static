@@ -185,6 +185,7 @@ Every tracked file appears below. If you add one, add a row.
 | `keyboard-profiles.nix` | The curated profile catalog: the single source of the profile ids and their rules/model/layout/variant/options tuples. |
 | `mesa-llvmpipe.nix` / `package-glx-llvmpipe.nix` | Fully static Mesa llvmpipe/LLVM and GLX Xvfb alpha build. |
 | `mesa-zink.nix` / `package-glx-external-vulkan.nix` | Host-assisted external Vulkan/Zink alpha build. |
+| `nix/mesa-common.nix` | The `mesa.override` arguments, mesonFlags, and dril-loader skip genuinely shared by both `mesa-llvmpipe.nix` and `mesa-zink.nix`. Deliberately does not unify their package-set construction, `nativeBuildInputs` strategy, `library()`/`static_library()` rewrite, or LLVM/SPIR-V-region mesonFlags, which differ in real build behavior, not formatting. |
 | `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded. |
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
 | `nix/extract-license.sh` | The one hardened license extractor, interpolated into all three package derivations. |
