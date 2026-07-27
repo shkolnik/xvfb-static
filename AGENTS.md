@@ -189,6 +189,7 @@ Every tracked file appears below. If you add one, add a row.
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
 | `nix/extract-license.sh` | The one hardened license extractor, interpolated into all three package derivations. |
 | `nix/keymap-catalog.nix` | The one keymap-catalog implementation: compiles every profile's XKM blob and generates the C arrays and lookup table embedded into Xvfb. |
+| `nix/manifest.nix` | The one manifest-writing implementation: shared `schema_version`/`keyboard.default` constants and the jq invocation that renders `manifest.json`, parameterized so each GLX variant's `variant`/`maturity`/`renderer`/etc. field is supplied once and cannot drift from its `passthru`. |
 | `nix/scrub-store-references.sh` | The one store-reference scrub, applied by every variant that ships a binary linked against store paths. |
 | `build-image.txt` | The single source of truth for the digest-pinned `nixos/nix` build container. Every script and workflow reads it. |
 
