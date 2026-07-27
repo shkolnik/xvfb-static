@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Fully static release-archive test: static linkage plus a clean Alpine boot.
+#
+# The variant-agnostic archive shape, manifest, and licence checks live in
+# test/archive-checks.sh and are run first from here, so every variant can be
+# checked even when it cannot take the static/Alpine parts below.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 archive="${1:-}"
@@ -10,8 +15,18 @@ if [[ -z "$archive" ]]; then
   esac
   archive="$root/out/$arch/xvfb-static-linux-$arch.tar.gz"
 fi
+
+for command in tar file docker; do
+  command -v "$command" >/dev/null || {
+    echo "required command is unavailable: $command" >&2
+    exit 1
+  }
+done
 test -s "$archive" || { echo "missing archive: $archive" >&2; exit 1; }
-tmp="$(mktemp -d /tmp/xvfb-static-smoke.XXXXXX)"
+
+"$root/test/archive-checks.sh" "$archive"
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/xvfb-static-smoke.XXXXXX")"
 name="xvfb-static-smoke-$$"
 cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
@@ -20,24 +35,7 @@ cleanup() {
 }
 trap cleanup EXIT
 tar -xzf "$archive" -C "$tmp"
-test -x "$tmp/bin/Xvfb"
-test -s "$tmp/share/xvfb-static/manifest.json"
-test -d "$tmp/share/xvfb-static/licenses"
-test "$(find "$tmp/bin" -maxdepth 1 -type f | wc -l)" -eq 1
 file "$tmp/bin/Xvfb" | grep -q 'statically linked'
-test -z "$(find "$tmp/share/xvfb-static/licenses" -type f -empty -print -quit)"
-actual_files="$tmp/actual-files"
-manifest_files="$tmp/manifest-files"
-(cd "$tmp" && find bin share -type f | LC_ALL=C sort) > "$actual_files"
-jq -er '.files[]' "$tmp/share/xvfb-static/manifest.json" | LC_ALL=C sort > "$manifest_files"
-diff -u "$manifest_files" "$actual_files"
-test "$(find "$tmp" -type f \( -name xkbcomp -o -name '*.xkm' \) | wc -l)" -eq 0
-test ! -d "$tmp/share/X11/xkb"
-jq -e '.schema_version == 2 and .keyboard.default == "us" and
-  (.keyboard.profiles | length) == 28 and
-  ([.keyboard.profiles[].id] | index("us-intl")) != null and
-  ([.keyboard.profiles[].id] | index("rs-latin")) != null' \
-  "$tmp/share/xvfb-static/manifest.json" >/dev/null
 docker run --name "$name" --rm -v "$tmp":/package:ro alpine:3.20 sh -eu -c '
   boot() {
     display="$1"; shift

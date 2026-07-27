@@ -62,7 +62,12 @@ toolchain.stdenv.mkDerivation {
 
   dontUnpack = true;
   buildInputs = [ targetPkgs.zlib ];
-  nativeBuildInputs = [ hostPkgs.binutils hostPkgs.patchelf ];
+  nativeBuildInputs = [
+    hostPkgs.binutils
+    hostPkgs.patchelf
+    hostPkgs.nukeReferences
+    hostPkgs.perl
+  ];
 
   buildPhase = ''
     runHook preBuild
@@ -103,6 +108,22 @@ toolchain.stdenv.mkDerivation {
     for binary in "$out"/bin/manylinux-2-28-probe-*; do
       patchelf --set-interpreter '${toolchain.deploymentLoader}' "$binary"
       patchelf --remove-rpath "$binary"
+
+      # patchelf --remove-rpath deletes the DT_RUNPATH entry but leaves its path
+      # string behind in .dynstr, so readelf -d reports no RPATH while the store
+      # paths are still in the file.  Every probe carries one: the manylinux
+      # stdenv deliberately adds a build-only -rpath into the sysroot so that
+      # target-built helpers can find their libc during the build.
+      #
+      # Scrub it exactly as package-glx-external-vulkan.nix scrubs the shipped
+      # binary, so a probe models the artifact rather than a laxer version of it:
+      # nuke-refs rewrites each store hash to a run of 'e', then the uniform dead
+      # prefix becomes an equally sized, explicitly unavailable path.  Equal size
+      # matters -- rewriting in place moves no offset in the string table.
+      nuke-refs "$binary"
+      perl -0pi -e \
+        's{/nix/store/e{32}-}{/nonexistent/xvfb-static/store-reference-xxx}g' \
+        "$binary"
     done
     mkdir -p "$out/nix-support"
     install -D -m 0644 manylinux-2-28-probe-cxx.verbose \
@@ -155,6 +176,17 @@ toolchain.stdenv.mkDerivation {
           *) echo "zlib probe has unexpected dynamic dependency: $library" >&2; exit 1 ;;
         esac
       done
+
+    # Fail here, at the layer that produced the binaries, rather than only in
+    # test/manylinux-2-28-toolchain.sh.  This check is what catches a return of
+    # the --remove-rpath assumption above: it passed the readelf RPATH audit
+    # while leaving both store paths in .dynstr.
+    for binary in "$out"/bin/manylinux-2-28-probe-*; do
+      if strings "$binary" | grep -F /nix/store >&2; then
+        echo "$binary retains a /nix/store reference after scrubbing" >&2
+        exit 1
+      fi
+    done
     runHook postInstallCheck
   '';
 }

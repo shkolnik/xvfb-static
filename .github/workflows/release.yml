@@ -3,7 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - "v*.*.*-r*"
+      # Coarse filter only. The authoritative grammar is RELEASE_TAG_REGEX in
+      # scripts/release-tag.sh, validated in the publish job below. This glob
+      # must stay at least as permissive as that regex: a stricter glob would
+      # let a valid tag push and then silently never build.
+      - "v*-r*"
 
 permissions:
   contents: read
@@ -54,38 +58,26 @@ jobs:
             artifact: xvfb-static-glx-external-vulkan-alpha-linux-aarch64
             archive: out/glx-external-vulkan-alpha/aarch64/xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz
     runs-on: ${{ matrix.runner }}
+    env:
+      CACHIX_CACHE_NAME: xvfb-static
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - if: matrix.variant == 'standard'
+        name: Build standard archive
         run: ./build.sh "${{ matrix.arch }}"
-        env:
-          CACHIX_CACHE_NAME: xvfb-static
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
       - if: matrix.variant == 'glx-llvmpipe'
+        name: Build GLX llvmpipe alpha archive
         run: ./build-glx-llvmpipe.sh "${{ matrix.arch }}"
-        env:
-          CACHIX_CACHE_NAME: xvfb-static
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
       - if: matrix.variant == 'glx-external-vulkan'
+        name: Build GLX external Vulkan alpha archive
         run: ./build-glx-external-vulkan.sh "${{ matrix.arch }}"
-        env:
-          CACHIX_CACHE_NAME: xvfb-static
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
       - if: matrix.variant == 'standard'
+        name: Verify all embedded keyboard profiles
         run: ./test/integration.sh "${{ matrix.arch }}"
-        env:
-          CACHIX_CACHE_NAME: xvfb-static
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
       - if: matrix.variant == 'glx-llvmpipe' || matrix.variant == 'glx-external-vulkan'
         name: Build GLX render test
-        env:
-          CACHIX_CACHE_NAME: xvfb-static
-          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
         run: |
           docker run --rm \
             -e NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 \
@@ -106,20 +98,31 @@ jobs:
                 /src/result-glx-render-test/bin/glx-render-test
             '
           test -x result-glx-render-test/bin/glx-render-test
-      # The external Vulkan artifact intentionally uses the host glibc and
-      # Vulkan loader, so it must use its ABI/Zink smoke test instead of the
-      # fully-static Alpine smoke test.
+      # Archive shape, manifest inventory, and licence checks are variant
+      # agnostic and must cover every published archive.
+      - name: Check archive shape, manifest, and licences
+        run: ./test/archive-checks.sh "${{ matrix.archive }}"
+      # Only the static-linkage assertion and the Alpine boot matrix are
+      # specific to the fully static variants. The external Vulkan artifact
+      # intentionally uses the host glibc and Vulkan loader, so it takes its
+      # own ABI/Zink test instead.
       - if: matrix.variant != 'glx-external-vulkan'
+        name: Boot packaged Xvfb in clean Alpine
         run: ./test/smoke.sh "${{ matrix.archive }}"
       - if: matrix.variant == 'glx-llvmpipe'
+        name: Render with packaged GLX llvmpipe alpha
         run: ./test/glx-llvmpipe-smoke.sh "${{ matrix.archive }}"
       - if: matrix.variant == 'glx-external-vulkan'
+        name: Verify manylinux_2_28 toolchain and glibc symbol floor
+        run: ./test/manylinux-2-28-toolchain.sh
+      - if: matrix.variant == 'glx-external-vulkan'
+        name: Verify external Vulkan ABI and Zink render
         run: ./test/glx-external-vulkan-smoke.sh "${{ matrix.archive }}"
       - name: Attest release archive
-        uses: actions/attest@v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
         with:
           subject-path: ${{ matrix.archive }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.archive }}
@@ -133,8 +136,8 @@ jobs:
       actions: read
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: xvfb-static-*
           path: dist
@@ -144,8 +147,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Same grammar release.sh validates against, so a tag can never be
+          # creatable locally but rejected here.
+          . scripts/release-tag.sh
+
           tag="$GITHUB_REF_NAME"
-          if [[ ! "$tag" =~ ^v([0-9]+(\.[0-9]+)*)-r([1-9][0-9]*)$ ]]; then
+          if [[ ! "$tag" =~ $RELEASE_TAG_REGEX ]]; then
             echo "invalid release tag: $tag" >&2
             echo "expected v<upstream-xorg-version>-r<positive-revision>" >&2
             exit 1
@@ -213,6 +220,9 @@ jobs:
           )
 
           nixpkgs_revision="$(jq -er '.nodes.nixpkgs.locked.rev' flake.lock)"
+          # Derive rather than restate: keyboard-profiles.nix is the catalog.
+          profile_count="$(grep -c '^  { id = ' keyboard-profiles.nix)"
+          test "$profile_count" -gt 0
           {
             printf 'xvfb-static %s packages X.Org Server %s.\n\n' "$tag" "$upstream_version"
             printf -- '- x86_64: built and boot-tested on a native GitHub-hosted runner\n'
@@ -224,7 +234,7 @@ jobs:
             printf -- '- all six archives have GitHub build-provenance attestations\n'
             printf -- '- nixpkgs revision: `%s`\n' "$nixpkgs_revision"
             printf -- '- source commit: `%s`\n\n' "$GITHUB_SHA"
-            printf 'This build embeds 28 curated keyboard profiles. `us` is the default; select another at startup with `-keyboard PROFILE`. Arbitrary layouts and live switching are unsupported.\n'
+            printf 'This build embeds %s curated keyboard profiles. `us` is the default; select another at startup with `-keyboard PROFILE`. Arbitrary layouts and live switching are unsupported.\n' "$profile_count"
           } > release-notes.md
       - name: Publish release
         env:

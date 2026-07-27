@@ -2,6 +2,9 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Shared with .github/workflows/release.yml so a tag this script will create can
+# never be one the release workflow rejects or silently ignores.
+. "$root/scripts/release-tag.sh"
 remote="origin"
 branch="main"
 image="nixos/nix@sha256:22c0a3a816eb3d315eb6720d2a58a3c3b622c9717c578f3c80b687668c6da277"
@@ -70,23 +73,38 @@ upstream_version="$(
         eval '.#xvfb-static-$arch.upstreamVersion' --raw --impure
     "
 )"
-if [[ ! "$upstream_version" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+if [[ ! "$upstream_version" =~ $RELEASE_UPSTREAM_REGEX ]]; then
   echo "unexpected X.Org Server version: $upstream_version" >&2
+  exit 1
+fi
+
+# Capture the refs in a checked command substitution rather than reading from a
+# process substitution: pipefail does not propagate out of `< <(...)`, so a
+# transient ls-remote failure would look identical to "no tags exist yet" and
+# silently propose re-releasing r1 over a published tag.
+if ! remote_tag_refs="$(git ls-remote --refs --tags "$remote" "v${upstream_version}-r*")"; then
+  echo "failed to read release tags from $remote" >&2
   exit 1
 fi
 
 highest_revision=0
 while IFS= read -r ref; do
+  [[ -n "$ref" ]] || continue
   tag="${ref#refs/tags/}"
   revision="${tag#v${upstream_version}-r}"
   if [[ "$revision" =~ ^[1-9][0-9]*$ ]] && (( revision > highest_revision )); then
     highest_revision="$revision"
   fi
-done < <(git ls-remote --refs --tags "$remote" "v${upstream_version}-r*" | awk '{print $2}')
+done < <(printf '%s\n' "$remote_tag_refs" | awk 'NF {print $2}')
 
 next_revision=$((highest_revision + 1))
 release_version="${upstream_version}-r${next_revision}"
 release_tag="v${release_version}"
+if [[ ! "$release_tag" =~ $RELEASE_TAG_REGEX ]]; then
+  echo "derived tag $release_tag does not match the release grammar" >&2
+  echo "the release workflow would reject or never trigger on it" >&2
+  exit 1
+fi
 current_revision="$(sed -nE 's/^  releaseRevision = ([0-9]+);$/\1/p' package.nix)"
 if [[ ! "$current_revision" =~ ^[1-9][0-9]*$ ]]; then
   echo "could not read the unique releaseRevision from package.nix" >&2
@@ -127,6 +145,12 @@ fi
 if [[ "$current_revision" != "$next_revision" ]]; then
   tmp="$(mktemp "$root/.package.nix.release.XXXXXX")"
   trap 'rm -f "$tmp"' EXIT
+  # mktemp creates the file 0600. Seed the temp from package.nix so it carries
+  # package.nix's own mode, then truncate and rewrite it: a plain `>` redirect
+  # leaves an existing file's permissions alone. Without this the mv below
+  # silently changes package.nix to 0600 on every release, and because Git
+  # tracks only the exec bit the change never shows up in review.
+  cp -p package.nix "$tmp"
   awk -v revision="$next_revision" '
     /^  releaseRevision = [0-9]+;$/ {
       print "  releaseRevision = " revision ";"
@@ -159,7 +183,12 @@ if [[ "$evaluated_version" != "$release_version" ]]; then
   exit 1
 fi
 
-bash -n build.sh build-glx-llvmpipe.sh test/smoke.sh test/glx-llvmpipe-smoke.sh release.sh
+# Parse every tracked script, not a hand-maintained subset: the previous list
+# had drifted to omit exactly the newest files, including both external Vulkan
+# scripts the release workflow depends on.
+mapfile -t release_scripts < <(git ls-files '*.sh')
+test "${#release_scripts[@]}" -gt 0
+bash -n "${release_scripts[@]}"
 git diff --check
 if [[ -n "$(git status --short)" ]]; then
   echo "release preparation left unexpected worktree changes" >&2

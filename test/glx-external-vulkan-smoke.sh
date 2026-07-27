@@ -23,8 +23,10 @@ test -s "$archive" || { echo "missing archive: $archive" >&2; exit 1; }
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/xvfb-static-glx-external-vulkan.XXXXXX")"
 name="xvfb-static-glx-external-vulkan-$$"
+positive_name="${name}-positive"
 cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
+  docker rm -f "$positive_name" >/dev/null 2>&1 || true
   chmod -R u+w "$tmp" 2>/dev/null || true
   rm -rf "$tmp"
 }
@@ -41,7 +43,6 @@ jq -e '
   .graphics_backend == "external-vulkan" and
   .runtime_model == "host-assisted" and
   (.glibc_symbol_floor | type == "string") and
-  ((has("minimum_host_glibc") | not) or (.minimum_host_glibc | type == "string")) and
   .required_graphics_library == "libvulkan.so.1" and
   (.components | has("mesa")) and
   (.components | has("llvm") | not)
@@ -63,10 +64,22 @@ if readelf -dW "$binary" | grep -Eq '\((RPATH|RUNPATH)\)'; then
   echo "external Vulkan Xvfb must not contain RPATH or RUNPATH" >&2
   exit 1
 fi
-forbidden_strings="$(strings "$binary" | grep -E '/nix/store|libLLVM|LLVM_[0-9]' || true)"
+# Keep this pattern in step with the build-time guard in
+# package-glx-external-vulkan.nix; it re-checks the packaged bytes.
+forbidden_strings="$(strings "$binary" |
+  grep -E '/nix/store|libLLVM|LLVM_[0-9]|swrast_dri|libGL\.so|libgallium[^ ]*\.so' || true)"
 if [[ -n "$forbidden_strings" ]]; then
-  echo "external Vulkan Xvfb contains forbidden Nix-store or LLVM references:" >&2
+  echo "external Vulkan Xvfb contains forbidden Nix-store, LLVM, or software-renderer references:" >&2
   printf '%s\n' "$forbidden_strings" >&2
+  exit 1
+fi
+
+# The archive must carry no LLVM notice, because no LLVM may be incorporated.
+llvm_notices="$(find "$tmp/share/xvfb-static/licenses" -type f \
+  \( -iname '*llvm*' -o -iname '*polly*' -o -iname '*blake3*' \) )"
+if [[ -n "$llvm_notices" ]]; then
+  echo "external Vulkan archive must not contain LLVM license texts:" >&2
+  printf '%s\n' "$llvm_notices" >&2
   exit 1
 fi
 
@@ -80,27 +93,23 @@ if [[ -z "$newest_glibc" ]] || [[ "$declared_glibc_floor" != "$newest_glibc" ]];
   exit 1
 fi
 
-minimum_host_glibc="$(jq -r 'if has("minimum_host_glibc") then .minimum_host_glibc else empty end' "$manifest")"
-if [[ -n "$minimum_host_glibc" ]]; then
-  if [[ "$(printf '%s\n' "$minimum_host_glibc" 2.31 | sort -V | tail -n 1)" != "2.31" ]]; then
-    echo "minimum_host_glibc must not claim a version newer than 2.31" >&2
-    exit 1
-  fi
-  if [[ "$(printf '%s\n' "$newest_glibc" "$minimum_host_glibc" | sort -V | tail -n 1)" != "$minimum_host_glibc" ]]; then
-    echo "binary GLIBC symbol floor exceeds the declared minimum host glibc" >&2
-    exit 1
-  fi
-fi
+# The compatibility floor is a single source of truth: the same lock file that
+# pins the manylinux build images and is asserted by nix/manylinux-2-28-images.nix.
+# Never restate the number here.
+lock="$root/nix/manylinux-2-28-images.json"
+test -s "$lock" || { echo "missing manylinux image lock: $lock" >&2; exit 1; }
+project_glibc_floor="$(jq -er --arg system "${manifest_arch}-linux" \
+  '.[$system].glibcFloor' "$lock")"
 
-if [[ "${XVFB_STATIC_REQUIRE_GLIBC_231:-0}" == "1" ]]; then
-  [[ "$minimum_host_glibc" == "2.31" ]] || {
-    echo "release-floor mode requires minimum_host_glibc=2.31" >&2
-    exit 1
-  }
-  if [[ "$(printf '%s\n' "$newest_glibc" 2.31 | sort -V | tail -n 1)" != "2.31" ]]; then
-    echo "release-floor mode rejects GLIBC_$newest_glibc; maximum is GLIBC_2.31" >&2
-    exit 1
-  fi
+# version_le A B -> true when A <= B
+version_le() {
+  [[ "$(printf '%s\n' "$1" "$2" | sort -V | tail -n 1)" == "$2" ]]
+}
+
+if ! version_le "$newest_glibc" "$project_glibc_floor"; then
+  echo "binary imports GLIBC_$newest_glibc, newer than the declared floor GLIBC_$project_glibc_floor" >&2
+  echo "the external Vulkan artifact must not require a glibc newer than its advertised floor" >&2
+  exit 1
 fi
 
 needed="$(readelf -dW "$binary" | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p')"
@@ -113,10 +122,16 @@ while IFS= read -r library; do
   esac
 done <<< "$needed"
 
-if [[ "$(printf '%s\n' "$newest_glibc" 2.31 | sort -V | tail -n 1)" != "2.31" ]]; then
-  echo "skipping Debian 11 runtime checks: prototype requires GLIBC_$newest_glibc (Debian 11 provides GLIBC_2.31)"
-  echo "xvfb-static GLX external Vulkan alpha structural ABI checks passed"
-  exit 0
+# Debian 11 provides GLIBC_2.31. The floor assertion above already guarantees
+# the binary stays at or below the project floor, so this must hold; a failure
+# here means the artifact cannot run on its own advertised baseline. Fail rather
+# than skip: an unrunnable binary is exactly the condition this test exists to
+# catch, and skipping would report success while exercising nothing.
+debian11_glibc="2.31"
+if ! version_le "$newest_glibc" "$debian11_glibc"; then
+  echo "binary requires GLIBC_$newest_glibc; Debian 11 provides GLIBC_$debian11_glibc" >&2
+  echo "the runtime, ICD, loader-failure, and render checks below cannot run" >&2
+  exit 1
 fi
 
 command -v docker >/dev/null || {
@@ -183,7 +198,6 @@ docker run --name "$name" --rm \
 
   '
 
-positive_name="${name}-positive"
 docker run --name "$positive_name" --rm \
   -v "$tmp":/package:ro \
   debian:trixie-slim sh -eu -c '
