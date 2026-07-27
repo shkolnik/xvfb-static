@@ -1,4 +1,5 @@
-{ lib, xvfb, runCommand, xkeyboard_config, stdenv, gnutar, gzip, jq, pixman, zlib, libmd
+{ lib, xvfb, runCommand, xkeyboard_config, stdenv, buildPackages, gnutar, gzip, jq
+, pixman, zlib, libmd
 , xkbcomp, libxcvt, xorg-server, libx11, libxext, libxfont_2
 , corruptEmbeddedProfile ? null
 }:
@@ -33,7 +34,12 @@ let
   });
   releaseRevision = 4;
   releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
-  nativeBuildInputs = [ gnutar gzip jq stdenv.cc.bintools ];
+  # nuke-refs and perl scrub the binary; they run on the build machine and must
+  # not come from the static target package set.
+  nativeBuildInputs = [
+    gnutar gzip jq stdenv.cc.bintools
+    buildPackages.nukeReferences buildPackages.perl
+  ];
   strip = "${stdenv.cc.targetPrefix}strip";
 in runCommand "xvfb-static-${releaseVersion}" {
   inherit nativeBuildInputs;
@@ -47,6 +53,10 @@ in runCommand "xvfb-static-${releaseVersion}" {
   cp ${xvfbPatched}/bin/Xvfb $out/bin/Xvfb
   chmod u+w $out/bin/Xvfb
   ${strip} --strip-all $out/bin/Xvfb
+
+  ${builtins.readFile ./nix/scrub-store-references.sh}
+  scrub_store_references $out/bin/Xvfb
+
   ${builtins.readFile ./nix/extract-license.sh}
   L=$out/share/xvfb-static/licenses
   extract_license ${xorg-server.src} COPYING $L/xorg-server.COPYING

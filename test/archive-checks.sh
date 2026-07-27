@@ -60,6 +60,19 @@ manifest_files="$tmp/manifest-files"
 jq -er '.files[]' "$tmp/share/xvfb-static/manifest.json" | LC_ALL=C sort > "$manifest_files"
 diff -u "$manifest_files" "$actual_files"
 
+# No packaged file may name a Nix store path. The build scrubs the binary (see
+# nix/scrub-store-references.sh); checking the extracted archive instead of
+# trusting the derivation keeps the guarantee attached to the bytes users
+# download, and applies it to the manifest and licence texts too. A store path
+# here would mean the artifact both advertises its build closure and carries a
+# hash that changes its checksum whenever an unrelated input moves.
+store_references="$(grep -alr /nix/store "$tmp" || true)"
+if [[ -n "$store_references" ]]; then
+  echo "packaged files retain Nix store references:" >&2
+  printf '%s\n' "$store_references" >&2
+  exit 1
+fi
+
 # The single-file runtime promise: no keymap compiler, no XKB tree, no loose XKM.
 test "$(find "$tmp" -type f \( -name xkbcomp -o -name '*.xkm' \) | wc -l)" -eq 0
 test ! -d "$tmp/share/X11/xkb"

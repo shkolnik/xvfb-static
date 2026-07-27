@@ -63,6 +63,10 @@ let
     static.jq
     static.xz
     static.stdenv.cc.bintools
+    # nuke-refs and perl scrub the binary; they run on the build machine and
+    # must not come from the static target package set.
+    pkgs.nukeReferences
+    pkgs.perl
   ];
 in
 static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
@@ -84,6 +88,9 @@ static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
   cp ${xvfbGlx}/bin/Xvfb $out/bin/Xvfb
   chmod u+w $out/bin/Xvfb
   ${static.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
+
+  ${builtins.readFile ./nix/scrub-store-references.sh}
+  scrub_store_references $out/bin/Xvfb
 
   ${builtins.readFile ./nix/extract-license.sh}
 
