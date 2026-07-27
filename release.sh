@@ -182,12 +182,11 @@ if [[ "$evaluated_version" != "$release_version" ]]; then
   exit 1
 fi
 
-# Parse every tracked script, not a hand-maintained subset: the previous list
-# had drifted to omit exactly the newest files, including both external Vulkan
-# scripts the release workflow depends on.
-mapfile -t release_scripts < <(git ls-files '*.sh')
-test "${#release_scripts[@]}" -gt 0
-bash -n "${release_scripts[@]}"
+# Parse every tracked script and check the documented facts, rather than a
+# hand-maintained subset: the previous list had drifted to omit exactly the
+# newest files, including both external Vulkan scripts the release workflow
+# depends on. This is the same script the CI gate runs.
+"$root/test/repo-checks.sh"
 # A release must not pull an image by mutable tag; see test/images.sh.
 "$root/test/docker-image-pins.sh"
 git diff --check
