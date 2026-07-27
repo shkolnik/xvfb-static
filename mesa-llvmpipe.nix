@@ -6,6 +6,7 @@
 , pkgs ? import (builtins.getFlake (toString ./.)).inputs.nixpkgs { inherit system; }
 }:
 let
+  mesaCommon = import ./nix/mesa-common.nix;
   static = pkgs.pkgsStatic;
   disabled = static.emptyDirectory;
   targetLLVM = static.llvmPackages.llvm.overrideAttrs (old: {
@@ -21,33 +22,11 @@ let
     clang-unwrapped = disabled;
     libclc = disabled;
   };
-  mesa = static.mesa.override {
+  mesa = static.mesa.override (mesaCommon.mkMesaOverrideArgs {
     galliumDrivers = [ "llvmpipe" ];
-    vulkanDrivers = [ ];
-    vulkanLayers = [ ];
-    eglPlatforms = [ "x11" ];
-    enablePatentEncumberedCodecs = false;
-    withValgrind = false;
     llvmPackages = minimalLLVM;
-    directx-headers = disabled;
-    elfutils = disabled;
-    glslang = disabled;
-    spirv-tools = disabled;
-    spirv-llvm-translator = disabled;
-    libglvnd = disabled;
-    libgbm = disabled;
-    vulkan-loader = disabled;
-    libva-minimal = disabled;
-    libdisplay-info = disabled;
-    lm_sensors = disabled;
-    udev = disabled;
-    wayland = disabled;
-    wayland-protocols = disabled;
-    wayland-scanner = disabled;
-    rustc = disabled;
-    rust-bindgen = disabled;
-    rust-cbindgen = disabled;
-  };
+    inherit disabled;
+  });
 in
 mesa.overrideAttrs (old: {
   passthru = (old.passthru or { }) // { inherit targetLLVM; };
@@ -60,32 +39,14 @@ mesa.overrideAttrs (old: {
   preConfigure = (old.preConfigure or "") + ''
     substituteInPlace src/gallium/targets/dri/meson.build \
       --replace-fail 'libgallium_dri = shared_library(' 'libgallium_dri = library('
-    substituteInPlace src/meson.build \
-      --replace-fail "    subdir('gallium/targets/dril')" \
-      "    message('Skipping unused dynamic dril loader')"
+  '' + mesaCommon.skipDrilSubdirPatch + ''
     substituteInPlace src/glx/meson.build \
       --replace-fail 'libgl = shared_library(' 'libgl = library('
   '';
-  mesonFlags = (old.mesonFlags or [ ]) ++ [
-    "-Dauto_features=disabled"
-    "-Ddefault_library=static"
-    "-Ddefault_both_libraries=static"
-    "-Dplatforms=x11"
-    "-Dglx=dri"
-    "-Dglvnd=disabled"
-    "-Degl=disabled"
-    "-Dgbm=disabled"
-    "-Dshared-glapi=enabled"
-    "-Dgallium-rusticl=false"
-    "-Dgallium-extra-hud=false"
-    "-Dgallium-va=disabled"
-    "-Dteflon=false"
-    "-Dinstall-mesa-clc=false"
-    "-Dinstall-precomp-compiler=false"
-    "-Dllvm=enabled"
-    "-Dvideo-codecs="
-    "-Dtools="
-  ];
+  mesonFlags = (old.mesonFlags or [ ])
+    ++ mesaCommon.mesonFlagsHead
+    ++ [ "-Dllvm=enabled" ]
+    ++ mesaCommon.mesonFlagsTail;
   postInstall = ''
     llvm_static_libs="$(${targetLLVM.dev}/bin/llvm-config --link-static --libs --system-libs | tr '\n' ' ')"
     gallium_archive="$(echo "$out"/lib/libgallium-*.so)"

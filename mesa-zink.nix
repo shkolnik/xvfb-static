@@ -5,6 +5,7 @@
 let
   staticOverrides = import ./nix/manylinux-2-28-static-overrides.nix;
   inherit (staticOverrides) noLsfontdir noPixmanTests noIntelNoValgrindLibdrm;
+  mesaCommon = import ./nix/mesa-common.nix;
   providedTargetPkgs = targetPkgs;
   providedHostPkgs = hostPkgs;
   packageSets =
@@ -139,34 +140,12 @@ let
     clang-unwrapped = disabled;
     libclc = disabled;
   };
-  mesa = (pkgs.mesa.override {
+  mesa = (pkgs.mesa.override (mesaCommon.mkMesaOverrideArgs {
     galliumDrivers = [ "zink" ];
-    vulkanDrivers = [ ];
-    vulkanLayers = [ ];
-    eglPlatforms = [ "x11" ];
-    enablePatentEncumberedCodecs = false;
-    withValgrind = false;
     llvmPackages = noLLVM;
-    directx-headers = disabled;
-    elfutils = disabled;
-    libunwind = disabled;
-    glslang = disabled;
-    spirv-tools = disabled;
-    spirv-llvm-translator = disabled;
-    libglvnd = disabled;
-    libgbm = disabled;
-    vulkan-loader = disabled;
-    libva-minimal = disabled;
-    libdisplay-info = disabled;
-    lm_sensors = disabled;
-    udev = disabled;
-    wayland = disabled;
-    wayland-protocols = disabled;
-    wayland-scanner = disabled;
-    rustc = disabled;
-    rust-bindgen = disabled;
-    rust-cbindgen = disabled;
-  }).overrideAttrs (old: {
+    inherit disabled;
+    extra = { libunwind = disabled; };
+  })).overrideAttrs (old: {
     # The manylinux target headers expose C11 atomics, but Mesa's portability
     # include path does not include the standard header before using
     # atomic_bool. Keep this source adjustment local to the Mesa build.
@@ -213,40 +192,24 @@ mesa.overrideAttrs (old: {
       --replace-fail 'libgallium_dri = shared_library(' 'libgallium_dri = static_library('
     substituteInPlace src/gallium/targets/dri/meson.build \
       --replace-fail 'name_suffix : libname_suffix,' ""
-    substituteInPlace src/meson.build \
-      --replace-fail "    subdir('gallium/targets/dril')" \
-      "    message('Skipping unused dynamic dril loader')"
+  '' + mesaCommon.skipDrilSubdirPatch + ''
     substituteInPlace src/glx/meson.build \
       --replace-fail 'libgl = shared_library(' 'libgl = static_library('
     substituteInPlace src/glx/meson.build \
       --replace-fail 'version : gl_lib_version,' "" \
       --replace-fail "darwin_versions : '4.0.0'," ""
   '';
-  mesonFlags = (old.mesonFlags or [ ]) ++ [
-    "-Dauto_features=disabled"
-    "-Ddefault_library=static"
-    "-Ddefault_both_libraries=static"
-    "-Dplatforms=x11"
-    "-Dglx=dri"
-    "-Dglvnd=disabled"
-    "-Degl=disabled"
-    "-Dgbm=disabled"
-    "-Dshared-glapi=enabled"
-    "-Dgallium-rusticl=false"
-    "-Dgallium-extra-hud=false"
-    "-Dgallium-va=disabled"
-    "-Dteflon=false"
-    "-Dinstall-mesa-clc=false"
-    "-Dinstall-precomp-compiler=false"
-    "-Dllvm=disabled"
-    "-Dshared-llvm=disabled"
-    "-Dspirv-tools=disabled"
-    "-Dshader-cache=disabled"
-    "-Dzstd=disabled"
-    "-Dvideo-codecs="
-    "-Dtools="
-    "-Dc_args=-DXVFB_STATIC_EXTERNAL_VULKAN=1"
-  ];
+  mesonFlags = (old.mesonFlags or [ ])
+    ++ mesaCommon.mesonFlagsHead
+    ++ [
+      "-Dllvm=disabled"
+      "-Dshared-llvm=disabled"
+      "-Dspirv-tools=disabled"
+      "-Dshader-cache=disabled"
+      "-Dzstd=disabled"
+    ]
+    ++ mesaCommon.mesonFlagsTail
+    ++ [ "-Dc_args=-DXVFB_STATIC_EXTERNAL_VULKAN=1" ];
   postInstall = ''
     gallium_archive="$(echo "$out"/lib/libgallium-*.a)"
     test -f "$gallium_archive"
