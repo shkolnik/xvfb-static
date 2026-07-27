@@ -203,15 +203,8 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   ${hostPkgs.stdenv.cc.targetPrefix}strip --strip-all $out/bin/Xvfb
   patchelf --set-interpreter ${interpreter} --remove-rpath $out/bin/Xvfb
 
-  # Static libraries carry build-time resource defaults and discarded linker
-  # paths into the final string table.  They cannot resolve on a target host,
-  # and retaining their store hashes would make the artifact depend on its
-  # build closure.  Nuke every store reference, then rewrite the uniform dead
-  # prefix to an equally sized, explicitly unavailable runtime path.
-  nuke-refs $out/bin/Xvfb
-  perl -0pi -e \
-    's{/nix/store/e{32}-}{/nonexistent/xvfb-static/store-reference-xxx}g' \
-    $out/bin/Xvfb
+  ${builtins.readFile ./nix/scrub-store-references.sh}
+  scrub_store_references $out/bin/Xvfb
 
   test "$(patchelf --print-interpreter $out/bin/Xvfb)" = "${interpreter}"
   test -z "$(patchelf --print-rpath $out/bin/Xvfb)"
