@@ -71,6 +71,17 @@ let
         targetPkgs = target;
         hostPkgs = host;
       };
+      staticOverrides = import ../nix/manylinux-2-28-static-overrides.nix;
+      # gl.pc's own Requires chain pulls in the same packages the shipped
+      # Xvfb links against to satisfy the identical `dependency('gl', ...,
+      # static: true)` request in package-glx-external-vulkan.nix -- mirror
+      # that buildInputs list here rather than rediscovering it by trial.
+      libdrmStatic = staticOverrides.noIntelNoValgrindLibdrm target.libdrm;
+      bzip2Static = target.bzip2.override { enableStatic = true; };
+      opensslStatic = (target.openssl.override { static = true; }).overrideAttrs (old: {
+        configureFlags = (old.configureFlags or [ ]) ++ [ "no-tests" ];
+        doCheck = false;
+      });
     in
     target.stdenv.mkDerivation {
       pname = "xvfb-static-glx-render-test";
@@ -79,10 +90,21 @@ let
       nativeBuildInputs = [ host.pkg-config host.patchelf ];
       buildInputs = [
         mesa
+        libdrmStatic
+        target.zlib
         target.libx11
+        target.libxcb
         target.libxext
+        target.libxfixes
+        target.libxxf86vm
         target.libxau
         target.libxdmcp
+        target.brotli
+        bzip2Static
+        target.freetype
+        target.libfontenc
+        target.libpng
+        opensslStatic
       ];
       buildPhase = ''
         runHook preBuild
