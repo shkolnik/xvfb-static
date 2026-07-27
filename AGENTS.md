@@ -39,7 +39,7 @@ GitHub-hosted runners.
 
 Still genuinely open, and not to be erased without evidence: a full
 closure-versus-licence audit (section 9), an SBOM, actual-GPU validation of the
-external Vulkan variant, and two test-coverage asymmetries. Section 11 tracks
+external Vulkan variant, and one test-coverage asymmetry. Section 11 tracks
 these.
 
 This repository must stay understandable, buildable, testable, and legally
@@ -683,18 +683,13 @@ In priority order:
    The remaining item is native actual-GPU render/readback on both
    architectures; everything else is enforced.
 
-3. **Close two test-coverage asymmetries.**
-   - `test/glx-render.nix` hardcodes `mesa-llvmpipe.nix`, so the render client
-     used to test the external Vulkan variant is built with LLVM and llvmpipe —
-     the two things that variant exists to exclude — rather than with the Zink
-     and manylinux toolchain the artifact itself uses. Parameterize it by
-     backend.
-   - The `-keyboard` selector and the `corruptEmbeddedProfile` fault injection
-     are exercised only against the standard variant. Both GLX variants embed
-     the same catalog through the same `nix/keymap-catalog.nix` and apply the
-     same patch, and neither is covered. `test/smoke.sh` already runs the
-     `-keyboard` assertions against the llvmpipe archive; the external Vulkan
-     archive cannot run `smoke.sh` at all, so its keyboard coverage is zero.
+3. **Close the remaining test-coverage asymmetry.** The `-keyboard` selector
+   and the `corruptEmbeddedProfile` fault injection are exercised only against
+   the standard variant. Both GLX variants embed the same catalog through the
+   same `nix/keymap-catalog.nix` and apply the same patch, and neither is
+   covered. `test/smoke.sh` already runs the `-keyboard` assertions against
+   the llvmpipe archive; the external Vulkan archive cannot run `smoke.sh` at
+   all, so its keyboard coverage is zero.
 
 4. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
    static closure and complement, not replace, license texts. This and gap 1
@@ -741,6 +736,15 @@ Closed, and kept here so the record is not re-opened by accident:
   keeps it that way. Note the honest limit recorded in that file: pinning bounds
   the base image only, and the external Vulkan test still installs packages from
   live Debian archives at run time.
+- **Parameterize `test/glx-render.nix` by backend** (was half of gap 3). It
+  took a `backend` argument (`"llvmpipe"` or `"zink"`) instead of always
+  importing `mesa-llvmpipe.nix`. The `zink` backend builds the render client
+  against `mesa-zink.nix` through the manylinux_2_28 target package set, the
+  same toolchain `package-glx-external-vulkan.nix` uses for the shipped
+  binary, so the one client meant to prove the no-LLVM artifact renders is no
+  longer itself linked against LLVM and llvmpipe. CI and the release workflow
+  pass `--argstr backend llvmpipe` for the llvmpipe matrix entries and
+  `--argstr backend zink` for the external Vulkan ones.
 
 ## 12. Engineering principles
 
