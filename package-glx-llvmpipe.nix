@@ -37,6 +37,9 @@ let
       ) dependencies);
   xvfbGlx = static.xvfb.overrideAttrs (old: {
   pname = "xvfb-static-glx-llvmpipe";
+  # See package.nix's xvfbPatched; needed here too so the version-agreement
+  # assert below matches standardPackage.upstreamVersion.
+  inherit (static.xorg-server) src version;
   NIX_LDFLAGS = (old.NIX_LDFLAGS or "") + " -lstdc++";
   buildInputs = prepareDependencies (old.buildInputs or [ ]) ++ [
     mesaLLVMpipe

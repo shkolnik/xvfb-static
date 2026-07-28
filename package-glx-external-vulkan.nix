@@ -92,6 +92,9 @@ let
   interpreter = toolchain.deploymentLoader;
   xvfbGlx = pkgs.xvfb.overrideAttrs (old: {
     pname = "xvfb-static-glx-external-vulkan";
+    # See package.nix's xvfbPatched; needed here too so the version-agreement
+    # assert below matches standardPackage.upstreamVersion.
+    inherit (pkgs.xorg-server) src version;
     # Unlike the llvmpipe variant, this one deliberately does NOT append
     # -lstdc++ to NIX_LDFLAGS. Mesa's pkg-config metadata adds libstdc++ at the
     # final GL/Zink link, and keeping it out of the global linker flags lets
