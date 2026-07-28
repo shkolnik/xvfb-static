@@ -37,15 +37,57 @@ remain with the host packages. Do not list them among the archive's notices,
 and do not omit a statically incorporated component on the grounds that the
 host is likely to have one too.
 
-## Open compliance gap
+## License elections
 
-The license lists in the three package derivations are hand-maintained, and
-nothing in the build compares them against what the binaries actually
-incorporate. The extractor fails when a *listed* notice is missing, empty, or
-ambiguous — it cannot fail when an incorporated component is *unlisted*.
+Two pinned components ship under a choice of licenses, and this project
+elects one deliberately rather than accepting whatever nixpkgs' summarized
+`meta.license` happens to report:
 
-That gap is real and currently unclosed. Until a closure-versus-list check
-exists, the bundled notices should be treated as complete for the components
-listed and unverified for the closure as a whole, and any dependency change
-requires a manual audit. `AGENTS.md` section 11 tracks this as the top open
-item.
+- **FreeType** offers the FTL and GPLv2 as mutually exclusive options (per its
+  own `docs/FTL.TXT`). This project ships the FTL text and never the GPLv2
+  text, to keep an otherwise all-permissive closure permissive.
+- **zstd** offers a BSD license (`LICENSE`) and, separately, GPLv2
+  (`COPYING`). This project ships the BSD text.
+
+`mesa-gl-headers` (Mesa's own `include/{GL,EGL,GLES*}` tree, pulled in as a
+direct dependency of nixpkgs' own `xvfb` derivation for DRI3/Present support,
+independent of GLX) ships as part of every variant, including the standard
+one. Its upstream license bundle aggregates notices for Mesa's entire
+repository, not just this header subset. The archive carries the
+plausibly-applicable permissive texts (Apache-2.0, MIT, SGI-B-2.0) from that
+bundle and deliberately omits the GPL-1.0, GPL-2.0, and BSL-1.0 texts also
+present there, on the assessment that the packaged public GL/EGL API headers
+follow Khronos's own permissive licensing, consistent with the rest of that
+header family.
+
+## Closure-versus-license audit
+
+`nix/license-closure.nix` walks each variant's real Nix dependency graph
+(`buildInputs` plus `propagatedBuildInputs`, transitively) and fails the build
+if any linked package has neither a license entry nor an explicit, justified
+allowlist entry. It also fails if an allowlist names a package no longer
+reachable in the closure, so a stale allowlist entry cannot silently
+substitute for real coverage — an early version of this project's own GLX
+variant refactor tripped that exact check when it copied allowlist entries
+that no longer applied to that variant's actual closure. Each package
+derivation asserts this audit before it will build at all.
+
+This closes the practical version of the gap this section used to describe:
+every package genuinely reachable through the closure walk now has to be
+either licensed or explicitly, auditably excused. Two things are
+intentionally excluded from the walk, not accidentally missed by it:
+
+- **musl and other implicit stdenv toolchain inputs** are not part of
+  `buildInputs`/`propagatedBuildInputs` and so are outside what a dependency
+  closure walk can see at all.
+- **`opaqueLeaves`** (currently `stdenv.cc.cc.lib` and, for the llvmpipe
+  variant, `python3`) stop the walk at that package's own boundary. These are
+  referenced only for their own license text or as build tooling; their
+  *internal* build-time composition (GCC's own gmp/mpfr/isl, Python's stdlib
+  dependency chain) is nixpkgs plumbing, not evidence of something statically
+  linked into Xvfb, and walking into it would just reintroduce noise the
+  audit exists to cut through.
+
+Treat those two exclusions as the honestly-scoped remainder of the original
+gap, not as unaudited surface. `AGENTS.md` section 11 tracks further closure
+work (an SBOM) as a related, separate item.

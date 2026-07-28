@@ -187,7 +187,8 @@ Every tracked file appears below. If you add one, add a row.
 | `nix/mesa-common.nix` | The `mesa.override` arguments, mesonFlags, and dril-loader skip genuinely shared by both `mesa-llvmpipe.nix` and `mesa-zink.nix`. Deliberately does not unify their package-set construction, `nativeBuildInputs` strategy, `library()`/`static_library()` rewrite, or LLVM/SPIR-V-region mesonFlags, which differ in real build behavior, not formatting. |
 | `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded, plus the `corruptEmbeddedProfile` fault-injection assertion. Parameterized by `xvfbStatic`/`corruptXvfb`; flake.nix wires it against both the standard and the GLX llvmpipe alpha packages, since both are fully static and can run it directly inside the Nix build sandbox. |
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
-| `nix/extract-license.sh` | The one hardened license extractor, interpolated into all three package derivations. |
+| `nix/extract-license.sh` | The one hardened license extractor, interpolated into all three package derivations. Includes `extract_license_glob` for packages that ship one license file per component (xorgproto's per-protocol `COPYING-*` files) instead of a single aggregate text. |
+| `nix/license-closure.nix` | The one link-closure walker and license-coverage audit, shared by all three package derivations. Walks `buildInputs`/`propagatedBuildInputs` transitively via `builtins.genericClosure` and fails the build if a reachable package has neither a license entry nor a justified allowlist entry, or if the allowlist names a package no longer in the closure. See `THIRD-PARTY-NOTICES.md`'s "Closure-versus-license audit" section for what it does and does not cover. |
 | `nix/keymap-catalog.nix` | The one keymap-catalog implementation: compiles every profile's XKM blob and generates the C arrays and lookup table embedded into Xvfb. |
 | `nix/manifest.nix` | The one manifest-writing implementation: shared `schema_version`/`keyboard.default` constants and the jq invocation that renders `manifest.json`, parameterized so each GLX variant's `variant`/`maturity`/`renderer`/etc. field is supplied once and cannot drift from its `passthru`. |
 | `nix/scrub-store-references.sh` | The one store-reference scrub, applied by every variant that ships a binary linked against store paths. |
@@ -536,10 +537,15 @@ For every distributed archive:
 - retain `xkbcomp` attribution conservatively unless a deliberate legal
   review concludes it is unnecessary.
 
-The current explicit license list covers the known Xvfb dependency set. It
-still needs validation against the derivation's actual complete runtime/static
-closure during the first successful build. Treat that as a release blocker:
-the archive must not be published merely because the listed files exist.
+Every package derivation asserts `nix/license-closure.nix`'s audit before it
+will build: any package reachable through `buildInputs`/`propagatedBuildInputs`
+with neither a license entry nor a justified allowlist entry fails the build
+by name, and a stale allowlist entry fails it too. That covers the real Nix
+dependency graph; it cannot see musl or other implicit stdenv toolchain
+inputs, which sit outside `buildInputs` entirely. Treat those two boundaries,
+not the whole closure, as what still wants a manual look after a dependency
+change. See `THIRD-PARTY-NOTICES.md`'s "Closure-versus-license audit" section
+for the full explanation.
 
 The llvmpipe GLX archive includes LLVM and its applicable notices. The external
 Vulkan archive must contain Mesa/Zink and other statically incorporated
@@ -669,22 +675,14 @@ Mesa version, and architecture.
 
 In priority order:
 
-1. **Validate compliance against the actual closure.** The hand-maintained
-   license lists in the three package derivations have never been checked
-   against what the binaries actually incorporate, and nothing in the build
-   compares them — the extractor fails only when a *listed* file is missing,
-   never when an incorporated component is *unlisted*. Add a check that
-   compares the license list against the derivation's closure and fails on any
-   statically incorporated component with no notice. Until that exists, audit
-   the list by hand after any dependency change.
-
-2. **Promote or retire the external Vulkan alpha.** See the gate in section 10.
+1. **Promote or retire the external Vulkan alpha.** See the gate in section 10.
    The remaining item is native actual-GPU render/readback on both
    architectures; everything else is enforced.
 
-3. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
-   static closure and complement, not replace, license texts. This and gap 1
-   want the same closure-walking machinery; build it once.
+2. **Consider an SPDX or CycloneDX SBOM.** It should describe the actual
+   static closure and complement, not replace, license texts.
+   `nix/license-closure.nix` already walks that closure for the license audit
+   below; an SBOM wants the same machinery, not new closure-walking code.
 
 Reproducibility is no longer listed as a gap, but the evidence is worth knowing
 precisely, because it is narrower than "reproducible":
@@ -714,6 +712,20 @@ Vulkan ones did not), so the next release needs a `releaseRevision` bump;
 
 Closed, and kept here so the record is not re-opened by accident:
 
+- **Validate compliance against the actual closure** (was gap 1). The license
+  lists in all three package derivations used to be hand-maintained with no
+  check against what the binaries actually incorporate. `nix/license-closure.nix`
+  now walks each variant's real `buildInputs`/`propagatedBuildInputs` closure
+  and fails the build if a reachable package has no license entry and no
+  justified allowlist entry, and separately if the allowlist itself goes
+  stale. See `THIRD-PARTY-NOTICES.md`'s "Closure-versus-license audit" section
+  for exactly what the walk does and does not cover — musl and other implicit
+  stdenv toolchain inputs are outside what any `buildInputs` walk can see, and
+  `opaqueLeaves` (GCC's own build deps, Python's stdlib chain) are deliberately
+  not walked into, both by design, not by oversight. The audit surfaced and
+  closed about two dozen previously-missing entries in one pass, including a
+  pre-existing gap where `package-glx-external-vulkan.nix` shipped no OpenSSL
+  notice at all despite linking `opensslStatic`.
 - **First clean builds** (was gap 1). Four release tags exist, `v21.1.23-r1`
   through `-r4`, each built and tested by the full CI matrix from a clean
   runner checkout.
