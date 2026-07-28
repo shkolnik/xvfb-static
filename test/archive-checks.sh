@@ -77,8 +77,13 @@ fi
 test "$(find "$tmp" -type f \( -name xkbcomp -o -name '*.xkm' \) | wc -l)" -eq 0
 test ! -d "$tmp/share/X11/xkb"
 
+# Every artifact declares both discriminators, so a variant that forgets one
+# fails here rather than shipping a manifest a consumer cannot classify. The
+# per-variant values are pinned by each variant's own smoke test.
 jq -e --argjson expected "$expected_profiles" \
-  '.schema_version == 2 and .keyboard.default == "us" and
+  '.schema_version == 3 and .keyboard.default == "us" and
+   (.variant as $v | ["no-glx", "glx"] | index($v)) != null and
+   (.maturity as $m | ["stable", "alpha"] | index($m)) != null and
    (.keyboard.profiles | length) == $expected and
    ([.keyboard.profiles[].id] | index("us-intl")) != null and
    ([.keyboard.profiles[].id] | index("rs-latin")) != null' \

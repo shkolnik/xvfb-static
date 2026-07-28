@@ -1,17 +1,17 @@
 # The one manifest-writing implementation shared by all three package
 # derivations.
 #
-# Before this file existed, `schema_version` and `keyboard.default` were
-# restated as literals in three places, and each GLX derivation wrote
-# `variant`/`maturity`/`renderer` twice -- once as a hardcoded literal in its
-# `passthru`, once again as the same hardcoded literal inside the embedded jq
-# filter string -- with nothing checking the two copies still agreed. Callers
-# now pass each GLX field once; this module threads that single value into
-# both the returned `passthru` fragment and the jq invocation, so the two
-# copies can no longer drift apart.
+# Each caller passes a field once and this module threads that single value
+# into both the returned `passthru` fragment and the jq invocation. Do not
+# reintroduce a literal in either place: the manifest and the `passthru` would
+# then be free to disagree, and nothing checks them against each other.
 { lib }:
 let
-  schemaVersion = 2;
+  # 3 added `variant`/`maturity` to every variant's manifest, including the
+  # no-GLX one. Under schema 2, `variant` appeared only on GLX artifacts, so a
+  # consumer could read its absence as "no GLX"; that inference is invalid
+  # from 3 onward, where the field is a discriminator carried by all three.
+  schemaVersion = 3;
   keyboardDefault = "us";
 
   # Renders the `files=...` capture and the final `jq -n` manifest-writing
@@ -19,18 +19,21 @@ let
   # date; changing it changes shipped bytes.
   #
   #   arch, version, revision, xorgVersion, profiles   -- required, all variants
+  #   variant, maturity                                -- required, all variants
   #   mesaVersion, llvmVersion                         -- optional components
-  #   variant, maturity, renderer,
-  #   graphicsBackend, runtimeModel                    -- GLX-only; pass all or none
+  #   renderer, graphicsBackend, runtimeModel          -- GLX-only; pass all or none
   #   glibcSymbolFloorVar                              -- shell variable name already
   #                                                        holding the measured floor
   #   requiredGraphicsLibrary                          -- external-Vulkan only
+  #
+  # `variant` and `maturity` have no defaults, so a new variant cannot ship a
+  # manifest that silently omits either one.
   mkManifestScript =
     { arch, version, revision, xorgVersion, profiles
+    , variant
+    , maturity
     , mesaVersion ? null
     , llvmVersion ? null
-    , variant ? null
-    , maturity ? null
     , renderer ? null
     , graphicsBackend ? null
     , runtimeModel ? null
@@ -38,10 +41,13 @@ let
     , requiredGraphicsLibrary ? null
     }:
     let
-      hasGlxFields = variant != null;
-      glxArgs = lib.optionalString hasGlxFields ''--arg variant "${variant}" --arg maturity "${maturity}" --arg renderer "${renderer}" --arg graphics_backend "${graphicsBackend}" --arg runtime_model "${runtimeModel}" '';
+      variantArgs = ''--arg variant "${variant}" --arg maturity "${maturity}" '';
+      variantFields = "variant:$variant,maturity:$maturity,";
+
+      hasGlxFields = renderer != null;
+      glxArgs = lib.optionalString hasGlxFields ''--arg renderer "${renderer}" --arg graphics_backend "${graphicsBackend}" --arg runtime_model "${runtimeModel}" '';
       glxFields = lib.optionalString hasGlxFields
-        "variant:$variant,maturity:$maturity,renderer:$renderer,graphics_backend:$graphics_backend,runtime_model:$runtime_model,";
+        "renderer:$renderer,graphics_backend:$graphics_backend,runtime_model:$runtime_model,";
 
       # `${"$" + glibcSymbolFloorVar}` -- not `$${glibcSymbolFloorVar}` -- because
       # in an indented string, a literal "$" immediately followed by "${" is
@@ -64,8 +70,8 @@ let
       jq -n --arg arch "${arch}" --arg version "${version}" --argjson revision ${toString revision} \
         --arg xorg_version "${xorgVersion}" --argjson files "$files" \
         --argjson keyboard_profiles '${builtins.toJSON profiles}' \
-        ${glxArgs}${glibcArgs}${componentArgs}\
-        '{name:"xvfb-static",version:$version,revision:$revision,schema_version:${toString schemaVersion},arch:$arch,${glxFields}${glibcFields}${requiredGraphicsLibraryFields}components:{"xorg-server":$xorg_version${componentFields}},keyboard:{default:"${keyboardDefault}",profiles:$keyboard_profiles},files:$files}' \
+        ${variantArgs}${glxArgs}${glibcArgs}${componentArgs}\
+        '{name:"xvfb-static",version:$version,revision:$revision,schema_version:${toString schemaVersion},arch:$arch,${variantFields}${glxFields}${glibcFields}${requiredGraphicsLibraryFields}components:{"xorg-server":$xorg_version${componentFields}},keyboard:{default:"${keyboardDefault}",profiles:$keyboard_profiles},files:$files}' \
         > $out/share/xvfb-static/manifest.json
     '';
 in

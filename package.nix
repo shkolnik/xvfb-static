@@ -123,6 +123,12 @@ let
     licenseEntries;
   releaseRevision = 1;
   releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
+  # Single source for the fields written into both passthru and the manifest.
+  # This variant carries no renderer/graphicsBackend/runtimeModel: it links no
+  # GL stack at all, so those axes have no value to report rather than a
+  # default one.
+  variant = "no-glx";
+  maturity = "stable";
   # nuke-refs and perl scrub the binary; they run on the build machine and must
   # not come from the static target package set.
   nativeBuildInputs = [
@@ -137,6 +143,7 @@ runCommand "xvfb-static-${releaseVersion}" {
   passthru = {
     inherit releaseRevision releaseVersion;
     upstreamVersion = xvfbPatched.version;
+    inherit variant maturity;
   };
 } ''
   set -euo pipefail
@@ -157,6 +164,6 @@ runCommand "xvfb-static-${releaseVersion}" {
     version = releaseVersion;
     revision = releaseRevision;
     xorgVersion = xvfbPatched.version;
-    inherit profiles;
+    inherit variant maturity profiles;
   }}
 ''
