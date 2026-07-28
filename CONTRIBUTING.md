@@ -18,14 +18,14 @@ takes about a second.
 If your change can affect shipped bytes, build and test **every variant it
 touches**. CI runs a 3-variant × 2-architecture matrix — no-GLX, GLX
 llvmpipe, and GLX external Vulkan alpha, each on x86_64 and aarch64 —
-so a green `build-no-glx.sh` plus `smoke.sh` is not the gate. It is one cell
+so a green `build-no-glx.sh` plus `static-smoke.sh` is not the gate. It is one cell
 of six.
 
 For the no-GLX variant:
 
 ```sh
 ./build-no-glx.sh x86_64
-./test/smoke.sh out/no-glx/x86_64/xvfb-static-no-glx-linux-x86_64.tar.gz
+./test/static-smoke.sh out/no-glx/x86_64/xvfb-static-no-glx-linux-x86_64.tar.gz
 ```
 
 For the GLX llvmpipe variant:
@@ -33,11 +33,11 @@ For the GLX llvmpipe variant:
 ```sh
 ./build-glx-llvmpipe.sh x86_64
 archive=out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
-./test/smoke.sh "$archive"
+./test/static-smoke.sh "$archive"
 ./test/glx-llvmpipe-smoke.sh "$archive"
 ```
 
-For the GLX external Vulkan alpha variant — note that `test/smoke.sh` does
+For the GLX external Vulkan alpha variant — note that `test/static-smoke.sh` does
 **not** apply, because that artifact is host-assisted and cannot boot in
 Alpine:
 

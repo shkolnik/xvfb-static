@@ -1,3 +1,14 @@
+mesa: check the LLVM execution engine was built before using it
+
+Why: lp_build_create_jit_compiler_for_module() dereferences builder.create()'s
+result without checking it, so a failure to construct the execution engine
+becomes a null dereference rather than an error return.
+`llvm-0001-allow-static-execution-engine.patch` removes the cause this build
+actually hit; this removes the unchecked use behind it.
+
+What: take the function's existing cleanup-and-fail path when create() yields
+no engine.
+
 diff --git a/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp b/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
 --- a/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
 +++ b/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp

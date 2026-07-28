@@ -1,3 +1,15 @@
+llvm: do not require dlopen to build an execution engine
+
+Why: EngineBuilder::create() loads the running program as a dynamic library so
+the JIT can resolve symbols out of it. A fully static build has no dlopen, that
+call reports failure, and create() returns nullptr -- leaving llvmpipe with no
+JIT at all.
+
+What: compile the call out unless the build reports dlopen support. A static
+executable has no dynamic symbol table for that lookup to search in the first
+place. The packaged llvmpipe render/readback test is what covers the JIT this
+produces.
+
 diff --git a/lib/ExecutionEngine/ExecutionEngine.cpp b/lib/ExecutionEngine/ExecutionEngine.cpp
 --- a/lib/ExecutionEngine/ExecutionEngine.cpp
 +++ b/lib/ExecutionEngine/ExecutionEngine.cpp

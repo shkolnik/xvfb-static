@@ -30,7 +30,7 @@ GitHub-hosted runners.
   on the full build-and-test matrix, so those releases are evidence of
   clean-checkout builds and passing Alpine smoke tests on both native
   architectures.
-- The project now builds X.Org Server **21.1.24**: `package.nix`'s
+- The project now builds X.Org Server **21.1.24**: `package-no-glx.nix`'s
   `xvfbPatched` tracks `pkgsStatic.xorg-server`'s own `src`/`version` rather
   than nixpkgs' `xvfb` attribute, which pins an older `src` as an internal
   rebuild-avoidance hack. `releaseRevision` has been reset from `5` to `1` per
@@ -209,7 +209,7 @@ Every tracked file appears below. If you add one, add a row.
 |---|---|
 | `flake.nix` | Defines symmetric native x86_64 and aarch64 outputs for all three variants, plus `checks`. |
 | `flake.lock` | Exact nixpkgs revision and content hash. This transitively pins X.Org and linked dependencies. |
-| `package.nix` | Core build: static-libxcvt workaround, embedded keymap, Xvfb override, stripping, license extraction, and manifest generation. |
+| `package-no-glx.nix` | Core build: static-libxcvt workaround, embedded keymap, Xvfb override, stripping, license extraction, and manifest generation. |
 | `keyboard-profiles.nix` | The curated profile catalog: the single source of the profile ids and their rules/model/layout/variant/options tuples. |
 | `mesa-llvmpipe.nix` / `package-glx-llvmpipe.nix` | Fully static Mesa llvmpipe/LLVM and GLX Xvfb build. |
 | `mesa-zink.nix` / `package-glx-external-vulkan.nix` | Host-assisted external Vulkan/Zink alpha build. |
@@ -253,10 +253,10 @@ to their named upstreams. See section 7 for ordering rules.
 | `patches/xserver-0004-component-log-prefixes.patch` | Adds stable component labels to project-owned Xserver and XKB diagnostics. |
 | `patches/xserver-0005-linked-swrast.patch` | GLX variants only: resolves the statically linked GL driver instead of dlopening a DRI module. |
 | `patches/xserver-0006-scroll-valuators.patch` | All three variants: grows the core pointer from 2 to 4 valuator axes and advertises an XI2.1 `ScrollClass` (horizontal, vertical) on `CorePointerProc`'s device. |
-| `patches/mesa-0001-check-jit-before-use.patch` | Prevents Mesa from assuming an LLVM JIT that the no-LLVM configuration does not provide. |
+| `patches/mesa-0001-check-jit-before-use.patch` | Returns an error instead of dereferencing null when the LLVM execution engine cannot be built. |
 | `patches/mesa-0002-linked-swrast-entrypoint.patch` | Exposes the statically linked swrast entry point the xserver patch above expects. |
 | `patches/mesa-0003-force-linked-zink.patch` | Forces Zink selection so no software renderer can be substituted silently. |
-| `patches/llvm-0001-allow-static-execution-engine.patch` | llvmpipe variant only: lets the execution engine link statically. |
+| `patches/llvm-0001-allow-static-execution-engine.patch` | llvmpipe variant only: drops the execution engine's dlopen requirement, which a static build cannot satisfy. |
 | `patches/umoci-0001-rootless-mask-privileged-mode-bits.patch` | Lets the sysroot unpack run rootless by masking privileged mode bits. |
 
 ### Scripts and automation
@@ -282,12 +282,12 @@ to their named upstreams. See section 7 for ordering rules.
 | Path | Purpose |
 |---|---|
 | `test/archive-checks.sh` | Variant-agnostic archive checks: shape, manifest inventory, licenses, absence of XKB runtime data, profile catalog. Runs against all six artifacts. |
-| `test/smoke.sh` | Runs `archive-checks.sh`, asserts static linkage, then boots Xvfb and exercises `-keyboard` inside clean Alpine. |
+| `test/static-smoke.sh` | Runs `archive-checks.sh`, asserts static linkage, then boots Xvfb and exercises `-keyboard` inside clean Alpine. Applies to every fully static artifact -- no-GLX and GLX llvmpipe, both architectures -- not to one variant. The external Vulkan artifact is host-assisted and takes `test/glx-external-vulkan-smoke.sh` instead. |
 | `test/glx-llvmpipe-smoke.sh` | Verifies indirect llvmpipe GLX render/readback without host graphics libraries. |
 | `test/glx-external-vulkan-smoke.sh` | Verifies the host-assisted ABI against the declared glibc floor, the loud missing-loader failure, and Zink render/readback. Also boots `-keyboard` (success, unknown, and missing-profile cases) and the corrupted-profile fault injection against a working Vulkan ICD, since this variant cannot take the flake's `keyboard-profiles` check; see `test/glx-external-vulkan-corrupt.nix`. Needs a glibc environment, not Alpine. |
 | `test/glx-external-vulkan-corrupt.nix` | Builds the external Vulkan Xvfb binary with one embedded keyboard profile corrupted, for the fault-injection assertion in `test/glx-external-vulkan-smoke.sh`. Reuses `package-glx-external-vulkan.nix`'s own `corruptEmbeddedProfile` parameter. |
 | `test/glx-render.nix` / `test/glx-render.c` | The GLX client used for render/readback checks. |
-| `test/xi2-scroll-check.c` | Runtime prover for the XI2.1 `ScrollClass` patch (`xserver-0006`): checks the XTEST pointer's scroll class, legacy wheel-button emulation, and valuator-injection motion, each against its own freshly booted Xvfb session. Invoked as the optional trailing scroll-check-binary argument to `test/smoke.sh` and `test/glx-external-vulkan-smoke.sh`. |
+| `test/xi2-scroll-check.c` | Runtime prover for the XI2.1 `ScrollClass` patch (`xserver-0006`): checks the XTEST pointer's scroll class, legacy wheel-button emulation, and valuator-injection motion, each against its own freshly booted Xvfb session. Invoked as the optional trailing scroll-check-binary argument to `test/static-smoke.sh` and `test/glx-external-vulkan-smoke.sh`. |
 | `test/xi2-scroll-check.nix` | The pure flake package that builds `test/xi2-scroll-check.c` into a static `bin/xi2-scroll-check`, wired as `packages.<system>.xi2-scroll-check-<arch>`. |
 | `test/integration.sh` | Runs a named Nix check (default `no-glx-keyboard-profiles`) in the pinned container; also takes `glx-llvmpipe-keyboard-profiles`. |
 | `test/manylinux-2-28-lock.sh` | Asserts the image lock's shape and that a divergent lock is rejected. |
@@ -349,12 +349,12 @@ Xvfb variants: `packages.<system>.xi2-scroll-check-<arch>`, built by
 `test/xi2-scroll-check.nix`. It is an ordinary pure `callPackage` module, not
 an Xvfb build, and produces the static XI2.1 scroll-check client described in
 section 4. CI and the release workflow build it once per architecture and
-hand its binary to `test/smoke.sh` and `test/glx-external-vulkan-smoke.sh` as
+hand its binary to `test/static-smoke.sh` and `test/glx-external-vulkan-smoke.sh` as
 their optional trailing argument.
 
 ### Layer 2: static Xvfb derivation
 
-`package.nix` starts with nixpkgs' top-level Xvfb-only X.Org server variant rather
+`package-no-glx.nix` starts with nixpkgs' top-level Xvfb-only X.Org server variant rather
 than re-creating the X server configuration flags. It:
 
 1. makes `libxcvt` build as a static archive;
@@ -398,7 +398,7 @@ From a clean checkout:
 
 ```sh
 ./build-no-glx.sh
-./test/smoke.sh
+./test/static-smoke.sh
 ```
 
 Then inspect rather than trusting a green exit status alone:
@@ -630,7 +630,7 @@ files names a container image; and the manylinux lock check.
 
 Every artifact, including the two external-Vulkan ones, runs
 `test/archive-checks.sh`. Only the four fully static artifacts run
-`test/smoke.sh`, which adds the static-linkage assertion and the Alpine boot
+`test/static-smoke.sh`, which adds the static-linkage assertion and the Alpine boot
 matrix; the external-Vulkan artifact is host-assisted and cannot boot in Alpine,
 so it runs `test/manylinux-2-28-toolchain.sh` and
 `test/glx-external-vulkan-smoke.sh` instead. Do not describe CI as
@@ -646,7 +646,7 @@ one file.
 
 The upstream portion must match the X.Org Server version in every artifact
 manifest, and the full tag must match the manifest's xvfb-static version. The
-project revision is maintained as `releaseRevision` in `package.nix`, starts at
+project revision is maintained as `releaseRevision` in `package-no-glx.nix`, starts at
 `r1`, increments whenever new bytes are released for the same upstream
 version, and resets to `r1` when upstream changes.
 
@@ -845,7 +845,7 @@ Closed, and kept here so the record is not re-opened by accident:
   run only against the no-GLX variant, even though both GLX variants embed
   the same catalog through the same `nix/keymap-catalog.nix` and apply the
   same patch. `package-glx-llvmpipe.nix` and `package-glx-external-vulkan.nix`
-  now take the same `corruptEmbeddedProfile` parameter `package.nix` always
+  now take the same `corruptEmbeddedProfile` parameter `package-no-glx.nix` always
   had. The GLX llvmpipe stays fully static, so it runs the existing
   `integration-test.nix` check directly in the Nix build sandbox, wired as
   `checks.<arch>.glx-llvmpipe-keyboard-profiles` and driven by
@@ -928,11 +928,15 @@ find . -maxdepth 3 -type f -print | sort
 # treats the rest as positional parameters, so it exits 0 on a broken b.sh.
 for script in $(git ls-files '*.sh'); do bash -n "$script"; done
 
-# Find accidental legacy branding or absolute paths. /src is included because
-# it is the container mount point, and Nix files must not hardcode it: doing so
-# makes them unevaluatable outside Docker. Hits inside build scripts and
-# workflows, which legitimately construct the mount, are expected.
-rg -n 'legacy-product-name|/workspace|/home/|/src' . --glob '!AGENTS.md'
+# Find accidental legacy branding or absolute paths. "pack" is the product name
+# this project used before it was xvfb-static; it survived for a long time in
+# patch headers, in patched source comments, and in one diagnostic compiled into
+# the binary, so it is worth re-checking rather than assuming it is gone. /src is
+# included because it is the container mount point, and Nix files must not
+# hardcode it: doing so makes them unevaluatable outside Docker. Hits inside
+# build scripts and workflows, which legitimately construct the mount, are
+# expected.
+rg -niw -e pack -e /workspace -e /home/ -e /src . --glob '!AGENTS.md'
 
 # Inspect output
 file out/no-glx/x86_64/package/bin/Xvfb

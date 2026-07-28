@@ -92,7 +92,7 @@ let
   interpreter = toolchain.deploymentLoader;
   xvfbGlx = pkgs.xvfb.overrideAttrs (old: {
     pname = "xvfb-static-glx-external-vulkan";
-    # See package.nix's xvfbPatched; needed here too so the version-agreement
+    # See package-no-glx.nix's xvfbPatched; needed here too so the version-agreement
     # assert below matches standardPackage.upstreamVersion.
     inherit (pkgs.xorg-server) src version;
     # Unlike the llvmpipe variant, this one deliberately does NOT append
@@ -210,7 +210,7 @@ endif" "message('Skipping unshipped Xserver test targets')"
     # reference, since nixpkgs' pname and its top-level attribute name
     # frequently disagree (e.g. pname "libxcb-image" is attribute
     # xcbutilimage). Same set as the no-GLX and llvmpipe variants; see
-    # package.nix for the freetype and mesa-gl-headers licensing rationale.
+    # package-no-glx.nix for the freetype and mesa-gl-headers licensing rationale.
     { pkg = findClosurePkg "brotli"; rel = "LICENSE"; dest = "brotli.LICENSE"; }
     { pkg = findClosurePkg "bzip2"; rel = "LICENSE"; dest = "bzip2.LICENSE"; }
     { pkg = findClosurePkg "font-util"; rel = "COPYING"; dest = "font-util.COPYING"; }
@@ -269,7 +269,7 @@ endif" "message('Skipping unshipped Xserver test targets')"
   licenseExtractLines = pkgs.lib.concatMapStrings
     (e: "extract_license ${e.pkg.src} ${e.rel} $L/${e.dest}\n")
     licenseEntries;
-  standardPackage = static.callPackage ./package.nix { };
+  standardPackage = static.callPackage ./package-no-glx.nix { };
   releaseVersion = standardPackage.releaseVersion;
   releaseRevision = standardPackage.releaseRevision;
 in

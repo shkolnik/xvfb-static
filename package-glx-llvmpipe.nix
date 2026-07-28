@@ -37,7 +37,7 @@ let
       ) dependencies);
   xvfbGlx = static.xvfb.overrideAttrs (old: {
   pname = "xvfb-static-glx-llvmpipe";
-  # See package.nix's xvfbPatched; needed here too so the version-agreement
+  # See package-no-glx.nix's xvfbPatched; needed here too so the version-agreement
   # assert below matches standardPackage.upstreamVersion.
   inherit (static.xorg-server) src version;
   NIX_LDFLAGS = (old.NIX_LDFLAGS or "") + " -lstdc++";
@@ -136,13 +136,13 @@ let
     { pkg = static.expat; rel = "COPYING"; dest = "expat.COPYING"; }
     # zstd is dual-licensed (BSD or GPLv2, its own LICENSE/COPYING files
     # respectively); elect the permissive BSD text, consistent with
-    # freetype's FTL election in package.nix.
+    # freetype's FTL election in package-no-glx.nix.
     { pkg = static.zstd; rel = "LICENSE"; dest = "zstd.LICENSE"; }
 
     # Below: found via the link-closure walk by pname, not a new explicit
     # reference, since nixpkgs' pname and its top-level attribute name
     # frequently disagree (e.g. pname "libxcb-image" is attribute
-    # xcbutilimage). Same set as package.nix's no-GLX variant; see there
+    # xcbutilimage). Same set as package-no-glx.nix's no-GLX variant; see there
     # for the freetype and mesa-gl-headers licensing rationale.
     { pkg = findClosurePkg "brotli"; rel = "LICENSE"; dest = "brotli.LICENSE"; }
     { pkg = findClosurePkg "bzip2"; rel = "LICENSE"; dest = "bzip2.LICENSE"; }
@@ -202,7 +202,7 @@ let
   licenseExtractLines = pkgs.lib.concatMapStrings
     (e: "extract_license ${e.pkg.src} ${e.rel} $L/${e.dest}\n")
     licenseEntries;
-  standardPackage = static.callPackage ./package.nix { };
+  standardPackage = static.callPackage ./package-no-glx.nix { };
   releaseVersion = standardPackage.releaseVersion;
   releaseRevision = standardPackage.releaseRevision;
   nativeBuildInputs = [

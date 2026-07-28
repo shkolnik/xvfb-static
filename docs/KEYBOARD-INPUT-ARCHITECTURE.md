@@ -252,5 +252,5 @@ ordering bug from your suite.
   how the catalog is compiled and embedded.
 - `keyboard-profiles.nix` — the catalog itself, and the only place the profile
   set is defined.
-- `test/smoke.sh` — the boot-time assertions on profile selection, including
+- `test/static-smoke.sh` — the boot-time assertions on profile selection, including
   the failure paths for unknown and missing profile arguments.

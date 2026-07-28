@@ -114,7 +114,7 @@ jobs:
 
       - if: matrix.variant != 'glx-external-vulkan'
         name: Boot packaged Xvfb in clean Alpine
-        run: ./test/smoke.sh "${{ matrix.archive }}" "result-xi2-scroll-check/bin/xi2-scroll-check"
+        run: ./test/static-smoke.sh "${{ matrix.archive }}" "result-xi2-scroll-check/bin/xi2-scroll-check"
 
       - if: matrix.variant == 'no-glx'
         name: Verify all embedded keyboard profiles
