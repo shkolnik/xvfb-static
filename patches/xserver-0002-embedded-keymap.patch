@@ -429,7 +429,7 @@ package.nix lists them in.
 +    (void) keymap_length;
 +
 +    ErrorF("xvfb-static: the X server's -keymap option is not supported by this "
-+           "display pack.\n");
++           "build.\n");
 +    ErrorF("xvfb-static: arbitrary keymaps are unsupported; use -keyboard with "
 +           "an embedded profile. Supported profiles: ");
 +    xvfb_static_list_keyboard_profiles();
