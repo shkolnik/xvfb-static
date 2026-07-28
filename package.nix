@@ -23,6 +23,10 @@ let
       ) dependencies);
   xvfbPatched = xvfb.overrideAttrs (old: {
     pname = "xvfb-static";
+    # nixpkgs' xvfb pins an older src/version than xorg-server as an internal
+    # rebuild-avoidance hack; the two sources are otherwise identical, so track
+    # xorg-server's instead (verified in this build container).
+    inherit (xorg-server) src version;
     buildInputs = prepareXvfbDependencies (old.buildInputs or [ ]);
     propagatedBuildInputs = prepareXvfbDependencies (old.propagatedBuildInputs or [ ]);
     mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dglx=false" ];
@@ -116,7 +120,7 @@ let
   licenseExtractLines = lib.concatMapStrings
     (e: "extract_license ${e.pkg.src} ${e.rel} $L/${e.dest}\n")
     licenseEntries;
-  releaseRevision = 5;
+  releaseRevision = 1;
   releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
   # nuke-refs and perl scrub the binary; they run on the build machine and must
   # not come from the static target package set.
