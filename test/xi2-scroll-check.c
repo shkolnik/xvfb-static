@@ -1,10 +1,10 @@
 /* xi2-scroll-check.c
  *
- * Self-contained runtime prover for the XI2.1 ScrollClass patch
+ * Runtime prover for the XI2.1 ScrollClass patch
  * (patches/xserver-0006-scroll-valuators.patch). Talks to a live X display
- * over libX11/libXi/libXtst only -- no xinput/xdotool -- and performs
- * exactly one of three checks per run, printing the concrete numbers it
- * observed and exiting non-zero on any assertion failure.
+ * over libX11/libXi/libXtst only, and performs exactly one of three checks per
+ * run, printing the numbers it observed and exiting non-zero on any assertion
+ * failure. One check per run keeps each against a freshly booted server.
  *
  * Build: cc xi2-scroll-check.c -lXtst -lXi -lX11 -o xi2-scroll-check
  * Usage:
@@ -32,13 +32,9 @@ static void die(const char *msg)
     exit(1);
 }
 
-/* Xlib's default error handler prints the error and then calls exit(1),
- * which would make an unpatched or misbehaving server kill this process
- * before check_c() gets to report anything -- confirmed by actually running
- * this against an unpatched Xvfb, where XTestFakeDeviceMotionEvent's
- * first_axis=2 is BadValue on a 2-axis device and the whole process died
- * before printing its own result. Report the protocol error and return 0 so
- * the check that triggered it can decide what it means. */
+/* Xlib's default error handler exits(1) on a protocol error, which would kill
+ * this process before the running check could report its own result. Report
+ * the error and return 0 so the check decides what it means. */
 static int nonfatal_error_handler(Display *handler_dpy, XErrorEvent *err)
 {
     char text[128];
@@ -50,10 +46,10 @@ static int nonfatal_error_handler(Display *handler_dpy, XErrorEvent *err)
     return 0;
 }
 
-/* Locate "Virtual core XTEST pointer" via XIQueryDevice, assert it is a
- * slave pointer (not just the master -- Chromium's device-data manager
- * ignores master scroll classes), and report every XIScrollClassInfo entry
- * found on it. Returns the device id. */
+/* Locate "Virtual core XTEST pointer" via XIQueryDevice and report every
+ * XIScrollClassInfo entry found on it. Asserts the device is a slave pointer,
+ * since that is where the patch places the scroll class and where XI2 clients
+ * read it from. Returns the device id. */
 static int find_xtest_pointer(void)
 {
     int ndevices, i, j, deviceid = -1, found = 0;
@@ -151,17 +147,14 @@ static int check_a(void)
 }
 
 /* Select XI_Motion/XI_ButtonPress/XI_ButtonRelease from all devices on the
- * root window and read events for up to timeout_ms, invoking cb for each
- * XIDeviceEvent seen. Stops early if cb returns non-zero. */
-static void pump_events(Window root, int timeout_ms, int (*cb)(XIDeviceEvent *))
+ * root window. Must run, and have its round trip complete, before any fake
+ * input is injected: the server processes XTestFakeButtonEvent and
+ * XTestFakeDeviceMotionEvent as soon as it reads the request, so selecting
+ * afterwards races the events being waited for and silently misses them. */
+static void select_events(Window root)
 {
     XIEventMask evmask;
     unsigned char mask[XIMaskLen(XI_LASTEVENT)];
-    int xi_opcode, event, error;
-    struct timeval deadline, now;
-
-    if (!XQueryExtension(dpy, "XInputExtension", &xi_opcode, &event, &error))
-        die("XInputExtension not available");
 
     memset(mask, 0, sizeof(mask));
     XISetMask(mask, XI_Motion);
@@ -172,7 +165,19 @@ static void pump_events(Window root, int timeout_ms, int (*cb)(XIDeviceEvent *))
     evmask.mask = mask;
     if (XISelectEvents(dpy, root, &evmask, 1) != Success)
         die("XISelectEvents failed");
-    XFlush(dpy);
+    XSync(dpy, False);
+}
+
+/* Read events for up to timeout_ms, invoking cb for each XIDeviceEvent seen.
+ * Stops early if cb returns non-zero. select_events() must already have been
+ * called and synced before any fake input that should be observed here. */
+static void pump_events(int timeout_ms, int (*cb)(XIDeviceEvent *))
+{
+    int xi_opcode, event, error;
+    struct timeval deadline, now;
+
+    if (!XQueryExtension(dpy, "XInputExtension", &xi_opcode, &event, &error))
+        die("XInputExtension not available");
 
     gettimeofday(&deadline, NULL);
     deadline.tv_sec += timeout_ms / 1000;
@@ -238,11 +243,16 @@ static int valuator_value(XIValuatorState *v, int axis, double *out)
 struct check_b_state {
     int saw_motion;
     double motion_v3;
-    int saw_emulated_button;
+    int saw_button5_press;
 };
 
 static struct check_b_state b_state;
 
+/* Assert on the button-5 press itself, not on XIPointerEmulated. When the
+ * original event is a button press, dix/getevents.c's
+ * emulate_scroll_button_events() leaves the re-emitted button unflagged and
+ * marks the synthesized *motion* emulated instead, so an emulated-flag check
+ * on the button would never fire. */
 static int check_b_callback(XIDeviceEvent *de)
 {
     double value;
@@ -257,10 +267,10 @@ static int check_b_callback(XIDeviceEvent *de)
     } else if (de->evtype == XI_ButtonPress) {
         printf("check-b: button press: detail=%d flags=0x%x\n", de->detail,
                de->flags);
-        if (de->detail == 5 && (de->flags & XIPointerEmulated))
-            b_state.saw_emulated_button = 1;
+        if (de->detail == 5)
+            b_state.saw_button5_press = 1;
     }
-    return b_state.saw_motion && b_state.saw_emulated_button;
+    return b_state.saw_motion && b_state.saw_button5_press;
 }
 
 static int check_b(void)
@@ -270,25 +280,59 @@ static int check_b(void)
     find_xtest_pointer();
     memset(&b_state, 0, sizeof(b_state));
 
+    select_events(root);
     XTestFakeButtonEvent(dpy, 5, True, CurrentTime);
     XTestFakeButtonEvent(dpy, 5, False, CurrentTime);
     XFlush(dpy);
 
-    pump_events(root, 2000, check_b_callback);
+    pump_events(2000, check_b_callback);
 
     if (!b_state.saw_motion)
         die("no motion event with a valuator[3] delta after button 5 click");
     if (b_state.motion_v3 != 120.0)
         die("legacy wheel click did not move valuator 3 by exactly 120");
-    if (!b_state.saw_emulated_button)
-        die("no XIPointerEmulated button-5 event alongside the motion");
+    if (!b_state.saw_button5_press)
+        die("no button-5 press event alongside the motion; legacy clients would break");
 
-    printf("check-b: PASS (valuator[3] delta=%g, emulated button seen)\n",
+    printf("check-b: PASS (valuator[3] delta=%g, button-5 press seen)\n",
            b_state.motion_v3);
     return 0;
 }
 
+/*
+ * Discover the vertical scroll axis rather than hardcoding 3, and fail if no
+ * axis carries the class. Do not simplify this to a constant: the patch both
+ * grows the pointer to four axes and marks two of them as scrolling, and those
+ * regress separately. If only the marking is lost, axis 3 still exists as an
+ * ordinary relative valuator and injection into it still delivers the value,
+ * so a hardcoded axis would let check c pass with the feature broken.
+ */
+static int vertical_scroll_axis(int deviceid)
+{
+    int ndevices, i, j, axis = -1;
+    XIDeviceInfo *devices = XIQueryDevice(dpy, deviceid, &ndevices);
+
+    if (!devices)
+        die("XIQueryDevice(deviceid) failed");
+    for (i = 0; i < ndevices; i++) {
+        for (j = 0; j < devices[i].num_classes; j++) {
+            XIAnyClassInfo *cls = devices[i].classes[j];
+            XIScrollClassInfo *scroll = (XIScrollClassInfo *) cls;
+
+            if (cls->type == XIScrollClass &&
+                scroll->scroll_type == XIScrollTypeVertical)
+                axis = scroll->number;
+        }
+    }
+    XIFreeDeviceInfo(devices);
+    if (axis < 0)
+        die("no vertical scroll class on the XTEST pointer; the axis may exist "
+            "as a plain valuator, but it is not marked as scrolling");
+    return axis;
+}
+
 struct check_c_state {
+    int axis;
     int saw_motion;
     double motion_v3;
     int xy_touched;
@@ -304,48 +348,68 @@ static int check_c_callback(XIDeviceEvent *de)
         return 0;
     if (XIMaskIsSet(de->valuators.mask, 0) || XIMaskIsSet(de->valuators.mask, 1))
         c_state.xy_touched = 1;
-    if (valuator_value(&de->valuators, 3, &value)) {
+    if (valuator_value(&de->valuators, c_state.axis, &value)) {
         c_state.saw_motion = 1;
         c_state.motion_v3 = value;
-        printf("check-c: motion event: valuator[3]=%g\n", value);
+        printf("check-c: motion event: valuator[%d]=%g\n", c_state.axis, value);
         return 1;
     }
     return 0;
 }
 
+/*
+ * first_axis MUST be 0, and the array MUST cover all four axes, even though
+ * only axis 3 carries a nonzero value. Do not shorten this to first_axis=2
+ * with a 2-element array: the value is then silently delivered as 0.
+ *
+ * The cause is in stock X.Org, not in xserver-0006-scroll-valuators.patch.
+ * Xext/xtest.c's ProcXTestFakeInput fills its local
+ * `int valuators[MAX_VALUATORS]` at absolute axis offsets
+ * (`base = firstValuator`, then `valuators[base + N] = dv->valuatorN`), while
+ * both consumers index it relatively: the root-offset fixup reads
+ * `valuators[1 - firstValuator]` and valuator_mask_set_range()
+ * (dix/inpututils.c) reads `valuators[i - first_valuator]`. They agree only
+ * when firstValuator is 0.
+ *
+ * The zero x/y deltas are relative, so they move nothing, and the server drops
+ * them from the delivered valuator mask -- which is what lets the x/y
+ * assertion below hold.
+ */
 static int check_c(double delta)
 {
     Window root = DefaultRootWindow(dpy);
     int deviceid = find_xtest_pointer();
     XDevice *xdev = XOpenDevice(dpy, deviceid);
-    int axes[2];
+    int axes[4];
 
     if (!xdev)
         die("XOpenDevice failed on the XTEST pointer");
 
     memset(&c_state, 0, sizeof(c_state));
+    c_state.axis = vertical_scroll_axis(deviceid);
     axes[0] = 0;
-    axes[1] = (int) delta;
-    if (!XTestFakeDeviceMotionEvent(dpy, xdev, True, 2, axes, 2, 0))
+    axes[1] = 0;
+    axes[2] = 0;
+    axes[3] = (int) delta;
+    select_events(root);
+    if (!XTestFakeDeviceMotionEvent(dpy, xdev, True, 0, axes, 4, 0))
         die("XTestFakeDeviceMotionEvent failed");
     XFlush(dpy);
 
-    pump_events(root, 2000, check_c_callback);
+    pump_events(2000, check_c_callback);
     XCloseDevice(dpy, xdev);
 
-    if (!c_state.saw_motion) {
-        printf("check-c: delta=%g produced no motion event (see design doc's "
-               "known-risk note; report this honestly, do not paper over it)\n",
-               delta);
-        return delta == 0.0 ? 0 : 1;
-    }
+    /* A zero delta must still produce an event, so clients can prime a scroll
+     * baseline without moving the axis. */
+    if (!c_state.saw_motion)
+        die("injection produced no motion event carrying the scroll valuator");
     if (c_state.motion_v3 != delta)
-        die("injected delta did not match the observed valuator[3] motion");
+        die("injected delta did not match the observed scroll valuator motion");
     if (c_state.xy_touched)
-        die("injection moved x/y even though first_axis=2 excluded them");
+        die("injection moved x/y even though both were injected as zero");
 
-    printf("check-c: PASS (delta=%g, observed valuator[3]=%g, x/y untouched)\n",
-           delta, c_state.motion_v3);
+    printf("check-c: PASS (delta=%g, observed valuator[%d]=%g, x/y untouched)\n",
+           delta, c_state.axis, c_state.motion_v3);
     return 0;
 }
 
