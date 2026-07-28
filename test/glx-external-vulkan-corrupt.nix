@@ -12,11 +12,15 @@
 #
 # Reuses package-glx-external-vulkan.nix's own corruptEmbeddedProfile
 # parameter rather than a second copy of the catalog-corruption logic.
+#
+# The corrupted profile is fixed at "de", matching flake.nix's mkCorrupt for
+# the standard variant: test/glx-external-vulkan-smoke.sh's fault-injection
+# assertion hard-codes the same id, so making it independently overridable
+# here would only let the two silently drift apart.
 { system ? builtins.currentSystem
 , nixpkgsSource ? (builtins.getFlake (toString ../.)).inputs.nixpkgs
-, corruptProfile ? "de"
 }:
 import ../package-glx-external-vulkan.nix {
   inherit system nixpkgsSource;
-  corruptEmbeddedProfile = corruptProfile;
+  corruptEmbeddedProfile = "de";
 }

@@ -299,14 +299,13 @@ well — the `libxcvt` override replaces the blocked derivation before anything
 evaluates its metadata. If you reintroduce either flag, say in the commit
 message which evaluation actually requires it.
 
-Three places still pass `--impure`, and all three are `--file` invocations that
+Four places still pass `--impure`, and all four are `--file` invocations that
 read `builtins.currentSystem` or `getFlake` a path, outside the flake's own
 evaluation: `nix-build-cached.sh` resolving `cachix.nix`,
-`test/manylinux-2-28-toolchain.sh` resolving the toolchain files, and the
-`glx-render` client step in both workflows resolving `test/glx-render.nix`.
-Those two workflow steps also still set `NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1`;
-whether they need it has not been re-derived since evaluation went pure, so do
-not treat its presence there as evidence that it is required.
+`test/manylinux-2-28-toolchain.sh` resolving the toolchain files, the
+`glx-render` client step in both workflows resolving `test/glx-render.nix`,
+and the "Build corrupted-profile external Vulkan Xvfb" step in both workflows
+resolving `test/glx-external-vulkan-corrupt.nix`.
 
 The `libxcvt` workaround itself is still needed: nixpkgs hard-codes Meson
 `shared_library()`, which ignores the static toolchain, so the project replaces

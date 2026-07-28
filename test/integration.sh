@@ -11,6 +11,10 @@ if [[ -z "$arch" ]]; then
 fi
 case "$arch" in x86_64|aarch64) ;; *) echo "usage: $0 [x86_64|aarch64] [check-name]" >&2; exit 2 ;; esac
 check="${2:-keyboard-profiles}"
+case "$check" in
+  keyboard-profiles|glx-llvmpipe-keyboard-profiles) ;;
+  *) echo "usage: $0 [x86_64|aarch64] [keyboard-profiles|glx-llvmpipe-keyboard-profiles]" >&2; exit 2 ;;
+esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Single source of truth for the pinned build container; see build-image.txt.

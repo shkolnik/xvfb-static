@@ -232,6 +232,15 @@ docker run --name "$positive_name" --rm \
     # environment already has a working Vulkan ICD, so the same boots that
     # proved Zink render/readback above also prove -keyboard works on a
     # binary that actually initializes GLX successfully.
+    check_log() {
+      label=$1; pattern=$2; log=$3
+      grep -q "$pattern" "$log" || {
+        echo "$label: expected pattern not found in $log:" >&2
+        echo "$pattern" >&2
+        cat "$log" >&2
+        exit 1
+      }
+    }
     boot() {
       display=$1; shift
       LIBGL_ALWAYS_SOFTWARE=1 VK_ICD_FILENAMES="$icd" \
@@ -239,38 +248,45 @@ docker run --name "$positive_name" --rm \
         >"/tmp/xvfb-$display.log" 2>&1 &
       pid=$!
       sleep 1
-      kill -0 "$pid"
+      if ! kill -0 "$pid" 2>/dev/null; then
+        echo "keyboard boot on :$display exited unexpectedly:" >&2
+        cat "/tmp/xvfb-$display.log" >&2
+        exit 1
+      fi
       kill "$pid"
       wait "$pid" || true
     }
     boot 100 -keyboard ru
-    grep -q "^\[xvfb-static:xserver\] selected keyboard profile: ru$" /tmp/xvfb-100.log
+    check_log ru "^\[xvfb-static:xserver\] selected keyboard profile: ru$" /tmp/xvfb-100.log
     boot 101 -keyboard us-intl
-    grep -q "^\[xvfb-static:xserver\] selected keyboard profile: us-intl$" /tmp/xvfb-101.log
+    check_log us-intl "^\[xvfb-static:xserver\] selected keyboard profile: us-intl$" /tmp/xvfb-101.log
 
     if LIBGL_ALWAYS_SOFTWARE=1 VK_ICD_FILENAMES="$icd" \
       /package/bin/Xvfb :102 +iglx -keyboard unsupported -screen 0 64x64x24 -nolisten tcp \
       >/tmp/xvfb-102.log 2>&1; then
       echo "invalid keyboard profile unexpectedly booted" >&2
+      cat /tmp/xvfb-102.log >&2
       exit 1
     fi
-    grep -q "^\[xvfb-static:xserver\] unknown keyboard profile.*unsupported" /tmp/xvfb-102.log
+    check_log unsupported "^\[xvfb-static:xserver\] unknown keyboard profile.*unsupported" /tmp/xvfb-102.log
 
     if LIBGL_ALWAYS_SOFTWARE=1 VK_ICD_FILENAMES="$icd" \
       /package/bin/Xvfb :103 +iglx -keyboard \
       >/tmp/xvfb-103.log 2>&1; then
       echo "missing keyboard profile unexpectedly booted" >&2
+      cat /tmp/xvfb-103.log >&2
       exit 1
     fi
-    grep -q "^\[xvfb-static:xserver\] -keyboard requires a profile" /tmp/xvfb-103.log
+    check_log missing "^\[xvfb-static:xserver\] -keyboard requires a profile" /tmp/xvfb-103.log
 
     if LIBGL_ALWAYS_SOFTWARE=1 VK_ICD_FILENAMES="$icd" \
       /package/Xvfb-corrupt :104 +iglx -keyboard de -screen 0 64x64x24 -nolisten tcp \
       >/tmp/xvfb-104.log 2>&1; then
       echo "corrupted embedded keyboard profile unexpectedly booted" >&2
+      cat /tmp/xvfb-104.log >&2
       exit 1
     fi
-    grep -q "^\[xvfb-static:xkb\] embedded keyboard profile .de. failed to load$" /tmp/xvfb-104.log
+    check_log corrupt "^\[xvfb-static:xkb\] embedded keyboard profile '\''de'\'' failed to load$" /tmp/xvfb-104.log
   '
 
 echo "xvfb-static GLX external Vulkan alpha ABI and Zink render smoke test passed"
