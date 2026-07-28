@@ -121,7 +121,7 @@ let
   licenseExtractLines = lib.concatMapStrings
     (e: "extract_license ${e.pkg.src} ${e.rel} $L/${e.dest}\n")
     licenseEntries;
-  releaseRevision = 1;
+  releaseRevision = 2;
   releaseVersion = "${xvfbPatched.version}-r${toString releaseRevision}";
   # Single source for the fields written into both passthru and the manifest.
   # This variant carries no renderer/graphicsBackend/runtimeModel: it links no
