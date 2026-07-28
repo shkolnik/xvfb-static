@@ -81,7 +81,7 @@ test ! -d "$tmp/share/X11/xkb"
 # fails here rather than shipping a manifest a consumer cannot classify. The
 # per-variant values are pinned by each variant's own smoke test.
 jq -e --argjson expected "$expected_profiles" \
-  '.schema_version == 3 and .keyboard.default == "us" and
+  '.schema_version == 2 and .keyboard.default == "us" and
    (.variant as $v | ["no-glx", "glx"] | index($v)) != null and
    (.maturity as $m | ["stable", "alpha"] | index($m)) != null and
    (.keyboard.profiles | length) == $expected and

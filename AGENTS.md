@@ -293,7 +293,7 @@ to their named upstreams. See section 7 for ordering rules.
 | `test/manylinux-2-28-lock.sh` | Asserts the image lock's shape and that a divergent lock is rejected. |
 | `test/manylinux-2-28-toolchain.sh` / `test/manylinux-2-28-toolchain.nix` | The glibc symbol-version gate: compiles the probes below and fails on any import newer than the declared floor. |
 | `test/manylinux-2-28-probe.c`, `test/manylinux-2-28-probe.cc`, `test/manylinux-2-28-zlib-probe.c` | C, C++, and zlib probes for that gate. |
-| `test/repo-checks.sh` | Build-free source-tree checks: shell syntax, and consistency between the documentation and the files, counts, and floors it describes. |
+| `test/repo-checks.sh` | Build-free source-tree checks: shell syntax, consistency between the documentation and the files, counts, and floors it describes, and every flake attribute named in a script, workflow, or document against what `flake.nix` defines. |
 | `test/images.sh` | Sourced, not executed. The single source of truth for the digest-pinned Alpine, Debian, and Ubuntu test containers. |
 | `test/docker-image-pins.sh` | Fails if any tracked file other than `build-image.txt` or `test/images.sh` names a container image, by tag or by digest. |
 | `test/manylinux-2-28-umoci-fixture.nix` | Fixture proving the umoci patch masks privileged mode bits. |
@@ -622,8 +622,9 @@ uncertain licensing questions rather than silently optimizing notices away.
 Both workflows run a **3-variant × 2-architecture matrix** — no-GLX,
 glx-llvmpipe, glx-external-vulkan, each on x86_64 and aarch64 native runners —
 producing six artifacts. CI additionally runs three build-free jobs that gate
-the build jobs: `test/repo-checks.sh`, which parses every tracked script and
-checks this document against the files, counts, and floors it describes;
+the build jobs: `test/repo-checks.sh`, which parses every tracked script,
+checks this document against the files, counts, and floors it describes, and
+resolves every flake attribute named in a string against `flake.nix`;
 `test/docker-image-pins.sh`, which fails if any file other than the two pin
 files names a container image; and the manylinux lock check.
 

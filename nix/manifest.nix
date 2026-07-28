@@ -7,11 +7,11 @@
 # then be free to disagree, and nothing checks them against each other.
 { lib }:
 let
-  # 3 added `variant`/`maturity` to every variant's manifest, including the
-  # no-GLX one. Under schema 2, `variant` appeared only on GLX artifacts, so a
-  # consumer could read its absence as "no GLX"; that inference is invalid
-  # from 3 onward, where the field is a discriminator carried by all three.
-  schemaVersion = 3;
+  # Bump when a change would make a manifest that is still published either
+  # unreadable or misread by a consumer written against this schema. Adding a
+  # field does not qualify on its own, and neither does changing one whose
+  # every published carrier has been withdrawn.
+  schemaVersion = 2;
   keyboardDefault = "us";
 
   # Renders the `files=...` capture and the final `jq -n` manifest-writing
