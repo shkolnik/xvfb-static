@@ -15,7 +15,7 @@ if [[ -z "$archive" ]]; then
     aarch64|arm64) arch="aarch64" ;;
     *) echo "unsupported host architecture: $(uname -m)" >&2; exit 2 ;;
   esac
-  archive="$root/out/$arch/xvfb-static-linux-$arch.tar.gz"
+  archive="$root/out/no-glx/$arch/xvfb-static-no-glx-linux-$arch.tar.gz"
 fi
 
 for command in jq tar find diff; do
@@ -77,8 +77,13 @@ fi
 test "$(find "$tmp" -type f \( -name xkbcomp -o -name '*.xkm' \) | wc -l)" -eq 0
 test ! -d "$tmp/share/X11/xkb"
 
+# Every artifact declares both discriminators, so a variant that forgets one
+# fails here rather than shipping a manifest a consumer cannot classify. The
+# per-variant values are pinned by each variant's own smoke test.
 jq -e --argjson expected "$expected_profiles" \
   '.schema_version == 2 and .keyboard.default == "us" and
+   (.variant as $v | ["no-glx", "glx"] | index($v)) != null and
+   (.maturity as $m | ["stable", "alpha"] | index($m)) != null and
    (.keyboard.profiles | length) == $expected and
    ([.keyboard.profiles[].id] | index("us-intl")) != null and
    ([.keyboard.profiles[].id] | index("rs-latin")) != null' \

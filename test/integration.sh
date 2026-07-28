@@ -10,10 +10,10 @@ if [[ -z "$arch" ]]; then
   esac
 fi
 case "$arch" in x86_64|aarch64) ;; *) echo "usage: $0 [x86_64|aarch64] [check-name]" >&2; exit 2 ;; esac
-check="${2:-keyboard-profiles}"
+check="${2:-no-glx-keyboard-profiles}"
 case "$check" in
-  keyboard-profiles|glx-llvmpipe-keyboard-profiles) ;;
-  *) echo "usage: $0 [x86_64|aarch64] [keyboard-profiles|glx-llvmpipe-keyboard-profiles]" >&2; exit 2 ;;
+  no-glx-keyboard-profiles|glx-llvmpipe-keyboard-profiles) ;;
+  *) echo "usage: $0 [x86_64|aarch64] [no-glx-keyboard-profiles|glx-llvmpipe-keyboard-profiles]" >&2; exit 2 ;;
 esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

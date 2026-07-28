@@ -40,26 +40,26 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-24.04
-            variant: standard
-            artifact: xvfb-static-linux-x86_64
-            archive: out/x86_64/xvfb-static-linux-x86_64.tar.gz
+            variant: no-glx
+            artifact: xvfb-static-no-glx-linux-x86_64
+            archive: out/no-glx/x86_64/xvfb-static-no-glx-linux-x86_64.tar.gz
           - arch: aarch64
             runner: ubuntu-24.04-arm
-            variant: standard
-            artifact: xvfb-static-linux-aarch64
-            archive: out/aarch64/xvfb-static-linux-aarch64.tar.gz
+            variant: no-glx
+            artifact: xvfb-static-no-glx-linux-aarch64
+            archive: out/no-glx/aarch64/xvfb-static-no-glx-linux-aarch64.tar.gz
           - arch: x86_64
             runner: ubuntu-24.04
             variant: glx-llvmpipe
             glx-backend: llvmpipe
-            artifact: xvfb-static-glx-llvmpipe-alpha-linux-x86_64
-            archive: out/glx-llvmpipe-alpha/x86_64/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz
+            artifact: xvfb-static-glx-llvmpipe-linux-x86_64
+            archive: out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
           - arch: aarch64
             runner: ubuntu-24.04-arm
             variant: glx-llvmpipe
             glx-backend: llvmpipe
-            artifact: xvfb-static-glx-llvmpipe-alpha-linux-aarch64
-            archive: out/glx-llvmpipe-alpha/aarch64/xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz
+            artifact: xvfb-static-glx-llvmpipe-linux-aarch64
+            archive: out/glx-llvmpipe/aarch64/xvfb-static-glx-llvmpipe-linux-aarch64.tar.gz
           - arch: x86_64
             runner: ubuntu-24.04
             variant: glx-external-vulkan
@@ -99,20 +99,20 @@ jobs:
                 /src/result-xi2-scroll-check/bin/xi2-scroll-check
             '
           test -x result-xi2-scroll-check/bin/xi2-scroll-check
-      - if: matrix.variant == 'standard'
-        name: Build standard archive
-        run: ./build.sh "${{ matrix.arch }}"
+      - if: matrix.variant == 'no-glx'
+        name: Build no-GLX archive
+        run: ./build-no-glx.sh "${{ matrix.arch }}"
       - if: matrix.variant == 'glx-llvmpipe'
-        name: Build GLX llvmpipe alpha archive
+        name: Build GLX llvmpipe archive
         run: ./build-glx-llvmpipe.sh "${{ matrix.arch }}"
       - if: matrix.variant == 'glx-external-vulkan'
         name: Build GLX external Vulkan alpha archive
         run: ./build-glx-external-vulkan.sh "${{ matrix.arch }}"
-      - if: matrix.variant == 'standard'
+      - if: matrix.variant == 'no-glx'
         name: Verify all embedded keyboard profiles
-        run: ./test/integration.sh "${{ matrix.arch }}"
+        run: ./test/integration.sh "${{ matrix.arch }}" no-glx-keyboard-profiles
       - if: matrix.variant == 'glx-llvmpipe'
-        name: Verify all embedded keyboard profiles (GLX llvmpipe alpha)
+        name: Verify all embedded keyboard profiles (GLX llvmpipe)
         run: ./test/integration.sh "${{ matrix.arch }}" glx-llvmpipe-keyboard-profiles
       - if: matrix.variant == 'glx-llvmpipe' || matrix.variant == 'glx-external-vulkan'
         name: Build GLX render test
@@ -148,7 +148,7 @@ jobs:
         name: Boot packaged Xvfb in clean Alpine
         run: ./test/smoke.sh "${{ matrix.archive }}" "result-xi2-scroll-check/bin/xi2-scroll-check"
       - if: matrix.variant == 'glx-llvmpipe'
-        name: Render with packaged GLX llvmpipe alpha
+        name: Render with packaged GLX llvmpipe
         run: ./test/glx-llvmpipe-smoke.sh "${{ matrix.archive }}"
       - if: matrix.variant == 'glx-external-vulkan'
         name: Verify manylinux_2_28 toolchain and glibc symbol floor
@@ -223,7 +223,7 @@ jobs:
           release_version="${tag#v}"
 
           for arch in x86_64 aarch64; do
-            archive="dist/xvfb-static-linux-$arch.tar.gz"
+            archive="dist/xvfb-static-no-glx-linux-$arch.tar.gz"
             test -s "$archive"
             manifest="$(tar -xOf "$archive" share/xvfb-static/manifest.json)"
             manifest_release="$(jq -er '.version' <<<"$manifest")"
@@ -237,12 +237,12 @@ jobs:
               exit 1
             fi
 
-            llvmpipe_archive="dist/xvfb-static-glx-llvmpipe-alpha-linux-$arch.tar.gz"
+            llvmpipe_archive="dist/xvfb-static-glx-llvmpipe-linux-$arch.tar.gz"
             test -s "$llvmpipe_archive"
             llvmpipe_manifest="$(tar -xOf "$llvmpipe_archive" share/xvfb-static/manifest.json)"
             llvmpipe_release="$(jq -er '.version' <<<"$llvmpipe_manifest")"
             llvmpipe_upstream="$(jq -er '.components["xorg-server"]' <<<"$llvmpipe_manifest")"
-            jq -e '.variant == "glx" and .maturity == "alpha" and .renderer == "llvmpipe"' \
+            jq -e '.variant == "glx" and .maturity == "stable" and .renderer == "llvmpipe"' \
               <<<"$llvmpipe_manifest" >/dev/null
             if [[ "$llvmpipe_release" != "$release_version" ]]; then
               echo "$llvmpipe_archive declares release $llvmpipe_release, but tag $tag declares $release_version" >&2
@@ -273,10 +273,10 @@ jobs:
           (
             cd dist
             sha256sum \
-              xvfb-static-linux-x86_64.tar.gz \
-              xvfb-static-linux-aarch64.tar.gz \
-              xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz \
-              xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz \
+              xvfb-static-no-glx-linux-x86_64.tar.gz \
+              xvfb-static-no-glx-linux-aarch64.tar.gz \
+              xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz \
+              xvfb-static-glx-llvmpipe-linux-aarch64.tar.gz \
               xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz \
               xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz > SHA256SUMS
           )
@@ -289,9 +289,9 @@ jobs:
             printf 'xvfb-static %s packages X.Org Server %s.\n\n' "$tag" "$upstream_version"
             printf -- '- x86_64: built and boot-tested on a native GitHub-hosted runner\n'
             printf -- '- aarch64: built and boot-tested on a native GitHub-hosted runner\n'
-            printf -- '- standard and GLX llvmpipe alpha archives were built and tested for both architectures\n'
+            printf -- '- no-GLX and GLX llvmpipe archives were built and tested for both architectures\n'
             printf -- '- GLX external Vulkan alpha archives were built and smoke-tested for both architectures\n'
-            printf -- '- GLX llvmpipe alpha uses Mesa llvmpipe software rendering and is experimental\n'
+            printf -- '- GLX llvmpipe uses Mesa llvmpipe software rendering; no host GPU driver is involved\n'
             printf -- '- GLX external Vulkan alpha uses host-assisted Mesa Zink/Vulkan rendering and is experimental; this workflow does not prove actual-GPU execution\n'
             printf -- '- all six archives have GitHub build-provenance attestations\n'
             printf -- '- nixpkgs revision: `%s`\n' "$nixpkgs_revision"
@@ -303,10 +303,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/xvfb-static-linux-x86_64.tar.gz \
-            dist/xvfb-static-linux-aarch64.tar.gz \
-            dist/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz \
-            dist/xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz \
+            dist/xvfb-static-no-glx-linux-x86_64.tar.gz \
+            dist/xvfb-static-no-glx-linux-aarch64.tar.gz \
+            dist/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz \
+            dist/xvfb-static-glx-llvmpipe-linux-aarch64.tar.gz \
             dist/xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz \
             dist/xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz \
             dist/SHA256SUMS \

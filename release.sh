@@ -70,7 +70,7 @@ upstream_version="$(
       set -eu
       git config --global --add safe.directory /src
       nix --extra-experimental-features 'nix-command flakes' \\
-        eval '.#xvfb-static-$arch.upstreamVersion' --raw
+        eval '.#xvfb-static-no-glx-$arch.upstreamVersion' --raw
     "
 )"
 if [[ ! "$upstream_version" =~ $RELEASE_UPSTREAM_REGEX ]]; then
@@ -174,7 +174,7 @@ evaluated_version="$(
       set -eu
       git config --global --add safe.directory /src
       nix --extra-experimental-features 'nix-command flakes' \\
-        eval '.#xvfb-static-$arch.releaseVersion' --raw
+        eval '.#xvfb-static-no-glx-$arch.releaseVersion' --raw
     "
 )"
 if [[ "$evaluated_version" != "$release_version" ]]; then

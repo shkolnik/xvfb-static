@@ -16,22 +16,23 @@ the files, counts, and version floors it describes. It needs no build and
 takes about a second.
 
 If your change can affect shipped bytes, build and test **every variant it
-touches**. CI runs a 3-variant × 2-architecture matrix — standard, GLX
-llvmpipe alpha, and GLX external Vulkan alpha, each on x86_64 and aarch64 —
-so a green `build.sh` plus `smoke.sh` is not the gate. It is one cell of six.
+touches**. CI runs a 3-variant × 2-architecture matrix — no-GLX, GLX
+llvmpipe, and GLX external Vulkan alpha, each on x86_64 and aarch64 —
+so a green `build-no-glx.sh` plus `smoke.sh` is not the gate. It is one cell
+of six.
 
-For the standard variant:
+For the no-GLX variant:
 
 ```sh
-./build.sh x86_64
-./test/smoke.sh out/x86_64/xvfb-static-linux-x86_64.tar.gz
+./build-no-glx.sh x86_64
+./test/smoke.sh out/no-glx/x86_64/xvfb-static-no-glx-linux-x86_64.tar.gz
 ```
 
-For the GLX llvmpipe alpha variant:
+For the GLX llvmpipe variant:
 
 ```sh
 ./build-glx-llvmpipe.sh x86_64
-archive=out/glx-llvmpipe-alpha/x86_64/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz
+archive=out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
 ./test/smoke.sh "$archive"
 ./test/glx-llvmpipe-smoke.sh "$archive"
 ```

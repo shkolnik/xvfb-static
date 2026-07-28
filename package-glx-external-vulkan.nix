@@ -209,7 +209,7 @@ endif" "message('Skipping unshipped Xserver test targets')"
     # Below: found via the link-closure walk by pname, not a new explicit
     # reference, since nixpkgs' pname and its top-level attribute name
     # frequently disagree (e.g. pname "libxcb-image" is attribute
-    # xcbutilimage). Same set as the standard and llvmpipe variants; see
+    # xcbutilimage). Same set as the no-GLX and llvmpipe variants; see
     # package.nix for the freetype and mesa-gl-headers licensing rationale.
     { pkg = findClosurePkg "brotli"; rel = "LICENSE"; dest = "brotli.LICENSE"; }
     { pkg = findClosurePkg "bzip2"; rel = "LICENSE"; dest = "bzip2.LICENSE"; }
@@ -274,14 +274,14 @@ endif" "message('Skipping unshipped Xserver test targets')"
   releaseRevision = standardPackage.releaseRevision;
 in
 # The manifest's `version` field (releaseVersion, above) is derived from the
-# *standard* variant's own patched Xvfb, built against hostPkgs.pkgsStatic,
+# *no-GLX* variant's own patched Xvfb, built against hostPkgs.pkgsStatic,
 # while its `xorg-server` component field (xvfbGlx.version, below) is derived
 # from this build's independently evaluated GLX-patched Xvfb, built against
 # the manylinux target package set. Both describe the same upstream X.Org
 # Server release; nothing enforced that agreement before this assertion.
 assert pkgs.lib.assertMsg (xvfbGlx.version == standardPackage.upstreamVersion) ''
   xvfb-static: GLX external-Vulkan Xvfb build reports X.Org Server version
-  ${xvfbGlx.version}, but the standard static package reports
+  ${xvfbGlx.version}, but the no-GLX static package reports
   ${standardPackage.upstreamVersion}. The manifest's version and xorg-server
   fields would disagree.'';
 assert pkgs.lib.assertMsg licenseAudit.ok licenseAudit.message;
