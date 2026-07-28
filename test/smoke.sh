@@ -8,6 +8,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$root/test/images.sh"
 archive="${1:-}"
+xi2_scroll_check="${2:-$root/result-xi2-scroll-check/bin/xi2-scroll-check}"
 if [[ -z "$archive" ]]; then
   case "$(uname -m)" in
     x86_64|amd64) arch="x86_64" ;;
@@ -24,6 +25,7 @@ for command in tar file docker; do
   }
 done
 test -s "$archive" || { echo "missing archive: $archive" >&2; exit 1; }
+test -x "$xi2_scroll_check" || { echo "missing xi2-scroll-check binary: $xi2_scroll_check" >&2; exit 1; }
 
 "$root/test/archive-checks.sh" "$archive"
 
@@ -37,6 +39,7 @@ cleanup() {
 trap cleanup EXIT
 tar -xzf "$archive" -C "$tmp"
 file "$tmp/bin/Xvfb" | grep -q 'statically linked'
+cp -L "$xi2_scroll_check" "$tmp/xi2-scroll-check"
 docker run --name "$name" --rm -v "$tmp":/package:ro "$XVFB_STATIC_ALPINE_IMAGE" sh -eu -c '
   boot() {
     display="$1"; shift
@@ -63,5 +66,34 @@ docker run --name "$name" --rm -v "$tmp":/package:ro "$XVFB_STATIC_ALPINE_IMAGE"
     exit 1
   fi
   grep -q "^\[xvfb-static:xserver\] -keyboard requires a profile" /tmp/missing.log
+
+  # One freshly booted session per check, so no check can leak scroll-valuator
+  # state into the next. Unlike boot() above, the session must stay alive while
+  # the client talks to it.
+  scroll_check() {
+    display="$1"; shift
+    /package/bin/Xvfb ":$display" -screen 0 1280x1024x24 -nolisten tcp -fp built-ins \
+      >"/tmp/xvfb-scroll-$display.log" 2>&1 &
+    pid=$!
+    sleep 2
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "xi2-scroll-check session on :$display exited unexpectedly:" >&2
+      cat "/tmp/xvfb-scroll-$display.log" >&2
+      exit 1
+    fi
+    if ! DISPLAY=":$display" /package/xi2-scroll-check "$@"; then
+      echo "xi2-scroll-check $* failed on :$display" >&2
+      cat "/tmp/xvfb-scroll-$display.log" >&2
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      exit 1
+    fi
+    kill "$pid"
+    wait "$pid" || true
+  }
+  scroll_check 150 a
+  scroll_check 151 b
+  scroll_check 152 c 37
+  scroll_check 153 c 0
 '
 echo "xvfb-static smoke test passed"

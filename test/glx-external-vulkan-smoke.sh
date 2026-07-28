@@ -6,6 +6,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 archive="${1:-}"
 render_test="${2:-$root/result-glx-render-test/bin/glx-render-test}"
 corrupt_binary="${3:-$root/result-corrupt-external-vulkan/bin/Xvfb}"
+scroll_check="${4:-$root/result-xi2-scroll-check/bin/xi2-scroll-check}"
 if [[ -z "$archive" ]]; then
   case "$(uname -m)" in
     x86_64|amd64) arch="x86_64" ;;
@@ -144,6 +145,8 @@ test -x "$render_test" || { echo "missing render test: $render_test" >&2; exit 1
 cp -L "$render_test" "$tmp/glx-render-test"
 test -x "$corrupt_binary" || { echo "missing corrupted-profile binary: $corrupt_binary" >&2; exit 1; }
 cp -L "$corrupt_binary" "$tmp/Xvfb-corrupt"
+test -x "$scroll_check" || { echo "missing xi2-scroll-check binary: $scroll_check" >&2; exit 1; }
+cp -L "$scroll_check" "$tmp/xi2-scroll-check"
 
 # Debian 11 supplies the advertised glibc/loader floor for the structural and
 # failure-path checks.  Its Mesa 22 lavapipe predates Zink's required
@@ -287,6 +290,37 @@ docker run --name "$positive_name" --rm \
       exit 1
     fi
     check_log corrupt "^\[xvfb-static:xkb\] embedded keyboard profile '\''de'\'' failed to load$" /tmp/xvfb-104.log
+
+    # One freshly booted session per check, so no check can leak scroll-valuator
+    # state into the next. Unlike boot() above, the session must stay alive
+    # while the client talks to it. Runs in this container because the checks
+    # need the working Vulkan ICD the render check above established.
+    scroll_check() {
+      display=$1; shift
+      LIBGL_ALWAYS_SOFTWARE=1 VK_ICD_FILENAMES="$icd" \
+        /package/bin/Xvfb ":$display" +iglx -screen 0 64x64x24 -nolisten tcp \
+        >"/tmp/xvfb-scroll-$display.log" 2>&1 &
+      pid=$!
+      sleep 1
+      if ! kill -0 "$pid" 2>/dev/null; then
+        echo "xi2-scroll-check session on :$display exited unexpectedly:" >&2
+        cat "/tmp/xvfb-scroll-$display.log" >&2
+        exit 1
+      fi
+      if ! DISPLAY=":$display" /package/xi2-scroll-check "$@"; then
+        echo "xi2-scroll-check $* failed on :$display" >&2
+        cat "/tmp/xvfb-scroll-$display.log" >&2
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        exit 1
+      fi
+      kill "$pid"
+      wait "$pid" || true
+    }
+    scroll_check 105 a
+    scroll_check 106 b
+    scroll_check 107 c 37
+    scroll_check 108 c 0
   '
 
 echo "xvfb-static GLX external Vulkan alpha ABI and Zink render smoke test passed"
