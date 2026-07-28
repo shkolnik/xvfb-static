@@ -1,41 +1,34 @@
 xvfb-static: XKB env overrides + direct-exec xkbcomp (no /bin/sh)
 
-What: patches xkb/ddxLoad.c (the only file in this xserver tree that builds
-and runs the xkbcomp command line — verified in Task 3's source inventory,
-see patches/README.md) to add two things:
+Patches xkb/ddxLoad.c, the only file in this tree that builds and runs the
+xkbcomp command line, to add two things:
 
-  1. XVFB_STATIC_XKB_BINDIR / XVFB_STATIC_XKM_OUTPUT_DIR env var overrides for the
-     xkbcomp binary directory and the compiled-.xkm output directory.
-     Neither has ANY existing runtime knob upstream (verified against the
-     pinned xorg-server 21.1.20 source: xkb/xkbInit.c's
-     XkbProcessArguments only recognizes -xkbdir, which sets
-     XkbBaseDirectory — the *data* tree, not the bin dir; XKM_OUTPUT_DIR is
-     a build-time-only AC_DEFINE_DIR constant with no getenv() anywhere in
-     the tree). Both are compiled-in-default-if-unset, matching the -xkbdir
-     flag's own "override only if you ask" shape.
+  1. XVFB_STATIC_XKB_BINDIR / XVFB_STATIC_XKM_OUTPUT_DIR env overrides for the
+     xkbcomp binary directory and the compiled-.xkm output directory. Neither
+     has any upstream runtime knob: xkb/xkbInit.c's XkbProcessArguments
+     recognizes only -xkbdir, which sets XkbBaseDirectory -- the *data* tree,
+     not the bin dir -- and XKM_OUTPUT_DIR is a build-time AC_DEFINE_DIR
+     constant with no getenv() anywhere in the tree. Both override a
+     compiled-in default only when set, matching -xkbdir's own shape.
+     Recheck these two claims against the pinned source after an xorg-server
+     bump; they are what justifies adding a knob rather than using one.
 
-  2. Direct fork()+execv() of xkbcomp instead of Popen()->
-     execl("/bin/sh","sh","-c",cmd) (os/utils.c:1425-1512, the ONLY call
-     site of which in this whole tree is this file's RunXkbComp — verified
-     via `grep -rln 'Popen(\|Pclose('`). A shell-less distroless host has
+  2. Direct fork()+execv() of xkbcomp instead of
+     Popen()->execl("/bin/sh","sh","-c",cmd) (os/utils.c). RunXkbComp here is
+     Popen()'s only call site in this tree. A shell-less distroless host has
      no /bin/sh for Popen to exec, so without this the server can never
-     compile a keymap and never finishes activating the keyboard on such a
-     host — the xvfb-static explicit boot bar (S2 spike gate).
+     compile a keymap and never finishes activating the keyboard there.
 
-Why here, why this shape: xkb/ddxLoad.c is the single file that owns both
-gaps, so the whole patch is contained to one file. The WIN32 branch (never
-built by this pack — pkgsStatic targets Linux only) is left running through
-its original Popen-free fopen()+System(buf) path, now written out in a
-dedicated #ifdef WIN32 branch instead of sharing an unconditional buf/argv
-build with the POSIX path, since the two now diverge (a quoted shell string
-for System() vs. an unquoted argv[] for execv()).
+Both gaps live in xkb/ddxLoad.c, so the patch is contained to one file. The
+WIN32 branch -- never built here, since pkgsStatic targets Linux only -- keeps
+its original Popen-free fopen()+System(buf) path, now written out under an
+explicit #ifdef WIN32 rather than sharing an unconditional buf/argv build with
+the POSIX path, because the two now diverge: a quoted shell string for
+System() against an unquoted argv[] for execv().
 
-Scope check against the S2 trip-wire (~150 lines / many hours): this diff
-is ~180 added / ~25 removed lines in one file, one function pair. It is
-larger than the ~150-line guidance — flagged explicitly in
-patches/README.md and the Task 3 report — but is a single,
-well-understood, bounded change (confirmed by a real build + boot, not
-guesswork), not an open-ended grind, so it proceeds rather than blocking.
+xserver-0002 makes this machinery unreachable by removing RunXkbComp()'s last
+in-tree caller on a reachable path. It is retained deliberately; see that
+patch's header.
 
 --- a/xkb/ddxLoad.c	2025-10-28 12:14:33.000000000 -0500
 +++ b/xkb/ddxLoad.c	2026-07-19 21:05:50.026982896 -0500
