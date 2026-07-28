@@ -389,8 +389,8 @@ the manifest and the smoke test should be updated together.
 ### Layer 4: deterministic release archive
 
 `build-no-glx.sh` dereferences the Nix result, creates
-`xvfb-static-linux-<arch>.tar.gz`, and writes `SHA256SUMS`. Local
-outputs live under `out/<arch>/` and are ignored by Git.
+`xvfb-static-no-glx-linux-<arch>.tar.gz`, and writes `SHA256SUMS`. Local
+outputs live under `out/no-glx/<arch>/` and are ignored by Git.
 
 ## 6. Normal development workflow
 
@@ -404,11 +404,11 @@ From a clean checkout:
 Then inspect rather than trusting a green exit status alone:
 
 ```sh
-tar -tzf out/x86_64/xvfb-static-linux-x86_64.tar.gz
-file out/x86_64/package/bin/Xvfb
-jq . out/x86_64/package/share/xvfb-static/manifest.json
-find out/x86_64/package/share/xvfb-static/licenses -type f -maxdepth 1 -print
-sha256sum --check out/x86_64/SHA256SUMS
+tar -tzf out/no-glx/x86_64/xvfb-static-no-glx-linux-x86_64.tar.gz
+file out/no-glx/x86_64/package/bin/Xvfb
+jq . out/no-glx/x86_64/package/share/xvfb-static/manifest.json
+find out/no-glx/x86_64/package/share/xvfb-static/licenses -type f -maxdepth 1 -print
+sha256sum --check out/no-glx/x86_64/SHA256SUMS
 ```
 
 Expected facts:
@@ -425,7 +425,7 @@ If Docker is unavailable but Nix is installed, evaluation/build can be
 attempted directly:
 
 ```sh
-nix build .#xvfb-static-x86_64
+nix build .#xvfb-static-no-glx-x86_64
 ```
 
 That path does not exercise the pinned Docker environment or archive assembly,
@@ -934,22 +934,22 @@ for script in $(git ls-files '*.sh'); do bash -n "$script"; done
 rg -n 'legacy-product-name|/workspace|/home/|/src' . --glob '!AGENTS.md'
 
 # Inspect output
-file out/x86_64/package/bin/Xvfb
-tar -tvzf out/x86_64/xvfb-static-linux-x86_64.tar.gz
-jq . out/x86_64/package/share/xvfb-static/manifest.json
+file out/no-glx/x86_64/package/bin/Xvfb
+tar -tvzf out/no-glx/x86_64/xvfb-static-no-glx-linux-x86_64.tar.gz
+jq . out/no-glx/x86_64/package/share/xvfb-static/manifest.json
 
 # Check for dynamic linkage (both should indicate no dynamic dependency)
-ldd out/x86_64/package/bin/Xvfb || true
-readelf -l out/x86_64/package/bin/Xvfb | rg 'interpreter' || true
+ldd out/no-glx/x86_64/package/bin/Xvfb || true
+readelf -l out/no-glx/x86_64/package/bin/Xvfb | rg 'interpreter' || true
 
 # Check embedded diagnostics/keymap guard strings
-grep -a 'xvfb-static:' out/x86_64/package/bin/Xvfb
+grep -a 'xvfb-static:' out/no-glx/x86_64/package/bin/Xvfb
 
 # Compare two independently saved builds
-sha256sum build-a/xvfb-static-linux-x86_64.tar.gz
-sha256sum build-b/xvfb-static-linux-x86_64.tar.gz
-cmp build-a/xvfb-static-linux-x86_64.tar.gz \
-    build-b/xvfb-static-linux-x86_64.tar.gz
+sha256sum build-a/xvfb-static-no-glx-linux-x86_64.tar.gz
+sha256sum build-b/xvfb-static-no-glx-linux-x86_64.tar.gz
+cmp build-a/xvfb-static-no-glx-linux-x86_64.tar.gz \
+    build-b/xvfb-static-no-glx-linux-x86_64.tar.gz
 ```
 
 ## 15. Definition of done

@@ -138,7 +138,7 @@ let
   strip = "${stdenv.cc.targetPrefix}strip";
 in
 assert lib.assertMsg licenseAudit.ok licenseAudit.message;
-runCommand "xvfb-static-${releaseVersion}" {
+runCommand "xvfb-static-no-glx-${releaseVersion}" {
   inherit nativeBuildInputs;
   passthru = {
     inherit releaseRevision releaseVersion;
