@@ -44,8 +44,8 @@ xvfb_static_arch() {
 #
 #   xvfb_static_build <root> <arch> <flake-attr-prefix> <output-subdir> <archive-prefix>
 #
-# For the standard variant the output subdirectory is just the architecture;
-# the GLX variants nest under their variant name.
+# Every variant nests its output under its own name, so no variant owns the
+# bare architecture directory.
 xvfb_static_build() {
   local root="$1" arch="$2" attribute="$3" subdir="$4" archive_prefix="$5"
   local image uid gid output archive

@@ -14,7 +14,7 @@
 , profiles ? import ../keyboard-profiles.nix
   # Each variant keeps the derivation name it already had, so extracting this
   # module leaves every store path and derivation hash untouched. They could be
-  # unified -- the standard and llvmpipe blobs are byte-identical -- but that
+  # unified -- the no-GLX and llvmpipe blobs are byte-identical -- but that
   # would force a rebuild of both GLX variants to prove something this refactor
   # does not need to change.
 , name ? "xvfb-static-keymaps"

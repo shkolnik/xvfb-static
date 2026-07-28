@@ -15,7 +15,7 @@ same question — where does OpenGL come from?
 
 | Variant | GL implementation | Dynamic deps | Size | Uses the GPU |
 |---|---|---|---|---|
-| standard | none; GLX disabled | none | smallest | no |
+| `no-glx` | none; GLX disabled | none | smallest | no |
 | `glx-llvmpipe-alpha` | Mesa llvmpipe + LLVM, statically linked | none | largest | no |
 | `glx-external-vulkan-alpha` | Mesa Zink, statically linked, over the host's Vulkan | `libvulkan.so.1` + libc | middle | yes, if the host has a driver |
 

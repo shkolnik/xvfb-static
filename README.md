@@ -52,7 +52,7 @@ scroll-class presence, legacy wheel-button emulation, and valuator-injection
 motion. That is the extent of the claim; how any given client maps valuator
 units onto its own scroll model is outside this project.
 
-The standard artifacts disable GLX to minimize size and dependency surface.
+The **no-GLX** artifacts disable GLX to minimize size and dependency surface.
 Separate **GLX llvmpipe alpha** artifacts embed Mesa llvmpipe for software-rendered,
 indirect GLX without a host GPU driver or shared library. They are larger and
 remain explicitly experimental while their compatibility receives broader
@@ -82,8 +82,8 @@ depending on it. See the
 
 Published GitHub Releases contain:
 
-- `xvfb-static-linux-x86_64.tar.gz`
-- `xvfb-static-linux-aarch64.tar.gz`
+- `xvfb-static-no-glx-linux-x86_64.tar.gz`
+- `xvfb-static-no-glx-linux-aarch64.tar.gz`
 - `xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz`
 - `xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz`
 - `xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz`
@@ -124,7 +124,7 @@ atomically pushes `main` and the tag to GitHub. In a terminal it previews the
 version and requires confirmation. Use `./release.sh --dry-run` to preview
 without changing files, commits, tags, or remote branches.
 
-Pushing a matching tag builds and smoke-tests the standard, GLX llvmpipe alpha,
+Pushing a matching tag builds and smoke-tests the no-GLX, GLX llvmpipe alpha,
 and GLX external Vulkan alpha variants for x86_64 and aarch64 on native
 GitHub-hosted runners. The GLX tests render and read pixels back for
 verification; the external Vulkan test uses lavapipe for integration coverage
@@ -140,13 +140,13 @@ release notes.
 Docker is the only host prerequisite:
 
 ```sh
-./build.sh
+./build-no-glx.sh
 ./test/smoke.sh
 ```
 
 With no argument, both scripts select the host architecture. You can pass
-`x86_64` or `aarch64` to `build.sh`, and an explicit archive path to the smoke
-test. Output is written under `out/<architecture>/`.
+`x86_64` or `aarch64` to `build-no-glx.sh`, and an explicit archive path to the
+smoke test. Output is written under `out/no-glx/<architecture>/`.
 
 You can also build the native package with an existing flakes-enabled Nix
 installation:
@@ -164,7 +164,7 @@ Build and test the native GLX llvmpipe alpha artifact with:
 ```
 
 The explicit architecture names accepted by `build-glx-llvmpipe.sh` are `x86_64` and
-`aarch64`, matching `build.sh`.
+`aarch64`, matching `build-no-glx.sh`.
 
 The external Vulkan alpha build uses an equivalently explicit
 `build-glx-external-vulkan.sh` entry point and writes under
@@ -189,9 +189,9 @@ actual-GPU coverage.
 
 ```sh
 sha256sum --check SHA256SUMS
-gh attestation verify xvfb-static-linux-x86_64.tar.gz \
+gh attestation verify xvfb-static-no-glx-linux-x86_64.tar.gz \
   --repo shkolnik/xvfb-static
-tar -xzf xvfb-static-linux-x86_64.tar.gz
+tar -xzf xvfb-static-no-glx-linux-x86_64.tar.gz
 file bin/Xvfb
 bin/Xvfb -version
 ```

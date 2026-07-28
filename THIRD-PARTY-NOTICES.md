@@ -18,7 +18,7 @@ The GLX llvmpipe alpha archives additionally incorporate Mesa llvmpipe, LLVM (in
 its BLAKE3 support code and Polly's isl/imath components), the GCC C++ runtime,
 and their statically linked support libraries. Their pinned-source license and
 runtime-exception texts are included alongside the X.Org notices in each GLX
-archive. The standard archives do not include the GLX software-rendering stack.
+archive. The no-GLX archives do not include the GLX software-rendering stack.
 
 The external Vulkan GLX alpha archives instead incorporate Mesa Zink and its
 statically linked support libraries. They must not incorporate LLVM, llvmpipe,
@@ -51,7 +51,7 @@ elects one deliberately rather than accepting whatever nixpkgs' summarized
 
 `mesa-gl-headers` (Mesa's own `include/{GL,EGL,GLES*}` tree, pulled in as a
 direct dependency of nixpkgs' own `xvfb` derivation for DRI3/Present support,
-independent of GLX) ships as part of every variant, including the standard
+independent of GLX) ships as part of every variant, including the no-GLX
 one. Its upstream license bundle aggregates notices for Mesa's entire
 repository, not just this header subset. The archive carries the
 plausibly-applicable permissive texts (Apache-2.0, MIT, SGI-B-2.0) from that

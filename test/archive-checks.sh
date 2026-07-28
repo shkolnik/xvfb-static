@@ -15,7 +15,7 @@ if [[ -z "$archive" ]]; then
     aarch64|arm64) arch="aarch64" ;;
     *) echo "unsupported host architecture: $(uname -m)" >&2; exit 2 ;;
   esac
-  archive="$root/out/$arch/xvfb-static-linux-$arch.tar.gz"
+  archive="$root/out/no-glx/$arch/xvfb-static-no-glx-linux-$arch.tar.gz"
 fi
 
 for command in jq tar find diff; do

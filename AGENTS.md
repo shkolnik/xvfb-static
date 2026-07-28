@@ -20,7 +20,7 @@ not for feature parity with a distribution Xvfb package.
 ## 2. Current status and provenance
 
 The project builds, tests, and publishes end to end. Both CI and the release
-workflow run a 3-variant × 2-architecture matrix (standard, GLX llvmpipe alpha,
+workflow run a 3-variant × 2-architecture matrix (no-GLX, GLX llvmpipe alpha,
 GLX external Vulkan alpha; x86_64 and aarch64) on matching native
 GitHub-hosted runners.
 
@@ -206,7 +206,7 @@ Every tracked file appears below. If you add one, add a row.
 | `mesa-llvmpipe.nix` / `package-glx-llvmpipe.nix` | Fully static Mesa llvmpipe/LLVM and GLX Xvfb alpha build. |
 | `mesa-zink.nix` / `package-glx-external-vulkan.nix` | Host-assisted external Vulkan/Zink alpha build. |
 | `nix/mesa-common.nix` | The `mesa.override` arguments, mesonFlags, and dril-loader skip genuinely shared by both `mesa-llvmpipe.nix` and `mesa-zink.nix`. Deliberately does not unify their package-set construction, `nativeBuildInputs` strategy, `library()`/`static_library()` rewrite, or LLVM/SPIR-V-region mesonFlags, which differ in real build behavior, not formatting. |
-| `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded, plus the `corruptEmbeddedProfile` fault-injection assertion. Parameterized by `xvfbStatic`/`corruptXvfb`; flake.nix wires it against both the standard and the GLX llvmpipe alpha packages, since both are fully static and can run it directly inside the Nix build sandbox. |
+| `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded, plus the `corruptEmbeddedProfile` fault-injection assertion. Parameterized by `xvfbStatic`/`corruptXvfb`; flake.nix wires it against both the no-GLX and the GLX llvmpipe alpha packages, since both are fully static and can run it directly inside the Nix build sandbox. |
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
 | `nix/extract-license.sh` | The one hardened license extractor, interpolated into all three package derivations. Includes `extract_license_glob` for packages that ship one license file per component (xorgproto's per-protocol `COPYING-*` files) instead of a single aggregate text. |
 | `nix/license-closure.nix` | The one link-closure walker and license-coverage audit, shared by all three package derivations. Walks `buildInputs`/`propagatedBuildInputs` transitively via `builtins.genericClosure` and fails the build if a reachable package has neither a license entry nor a justified allowlist entry, or if the allowlist names a package no longer in the closure. See `THIRD-PARTY-NOTICES.md`'s "Closure-versus-license audit" section for what it does and does not cover. |
@@ -256,7 +256,7 @@ to their named upstreams. See section 7 for ordering rules.
 | Path | Purpose |
 |---|---|
 | `build-common.sh` | Sourced, not executed. The shared body of the three build entry points, and the one definition of the build image accessor, the `/nix` volume name, the archive mtime, and the architecture table. |
-| `build.sh` | Docker-only entry point and reproducible archive/checksum assembly for the base variant. |
+| `build-no-glx.sh` | Docker-only entry point and reproducible archive/checksum assembly for the no-GLX variant. |
 | `build-glx-llvmpipe.sh` | Deterministic llvmpipe GLX alpha archive entry point. |
 | `build-glx-external-vulkan.sh` | Deterministic external Vulkan GLX alpha archive entry point. |
 | `nix-build-cached.sh` | In-container build wrapper: configures public cache reads, asserts the substituter actually took effect, and pushes new paths when authenticated. |
@@ -294,7 +294,7 @@ to their named upstreams. See section 7 for ordering rules.
 
 ### Layer 1: pinned environment
 
-`build.sh` starts a digest-pinned `nixos/nix` container and mounts:
+`build-no-glx.sh` starts a digest-pinned `nixos/nix` container and mounts:
 
 - the repository at `/src`;
 - a named Docker volume, `xvfb-static-nix`, at `/nix` for build-cache
@@ -303,7 +303,7 @@ to their named upstreams. See section 7 for ordering rules.
 The host needs only Docker. Files created as root in the container are handed
 back to the invoking host UID/GID before exit.
 
-When `CACHIX_CACHE_NAME` is set, `build.sh` installs the Cachix client from
+When `CACHIX_CACHE_NAME` is set, `build-no-glx.sh` installs the Cachix client from
 the locked nixpkgs input inside the container and configures that public
 binary cache as a substituter. When `CACHIX_AUTH_TOKEN` and the self-managed
 `CACHIX_SIGNING_KEY` are also set, the build runs under `cachix watch-exec`,
@@ -312,7 +312,7 @@ receive anonymous read access only; trusted branch and release builds receive
 the repository secrets and may write. The cache is an optimization, not
 reproducibility evidence; periodically test with it disabled.
 
-All three flake variants evaluate **purely**: `build.sh`,
+All three flake variants evaluate **purely**: `build-no-glx.sh`,
 `build-glx-llvmpipe.sh`, `build-glx-external-vulkan.sh`, `release.sh`, and
 `test/integration.sh` pass neither `--impure` nor
 `NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1`. `--impure` was required until the GLX and
@@ -380,7 +380,7 @@ the manifest and the smoke test should be updated together.
 
 ### Layer 4: deterministic release archive
 
-`build.sh` dereferences the Nix result, creates
+`build-no-glx.sh` dereferences the Nix result, creates
 `xvfb-static-linux-<arch>.tar.gz`, and writes `SHA256SUMS`. Local
 outputs live under `out/<arch>/` and are ignored by Git.
 
@@ -389,7 +389,7 @@ outputs live under `out/<arch>/` and are ignored by Git.
 From a clean checkout:
 
 ```sh
-./build.sh
+./build-no-glx.sh
 ./test/smoke.sh
 ```
 
@@ -421,7 +421,7 @@ nix build .#xvfb-static-x86_64
 ```
 
 That path does not exercise the pinned Docker environment or archive assembly,
-so it is useful but not a replacement for `build.sh` plus the Alpine test.
+so it is useful but not a replacement for `build-no-glx.sh` plus the Alpine test.
 
 ### Verify test teeth
 
@@ -611,7 +611,7 @@ uncertain licensing questions rather than silently optimizing notices away.
 
 ## 10. CI and release expectations
 
-Both workflows run a **3-variant × 2-architecture matrix** — standard,
+Both workflows run a **3-variant × 2-architecture matrix** — no-GLX,
 glx-llvmpipe, glx-external-vulkan, each on x86_64 and aarch64 native runners —
 producing six artifacts. CI additionally runs three build-free jobs that gate
 the build jobs: `test/repo-checks.sh`, which parses every tracked script and
@@ -643,7 +643,7 @@ version, and resets to `r1` when upstream changes.
 
 Run `./release.sh` from a clean local `main` checkout to prepare and push a
 release. It derives the upstream version through the same digest-pinned Nix
-Docker image as `build.sh`, considers tags already present on GitHub, and
+Docker image as `build-no-glx.sh`, considers tags already present on GitHub, and
 updates only `releaseRevision`. Interactive runs require confirmation;
 `--dry-run` previews without changing source, commits, tags, or remote
 branches. Changing the build environment means editing `build-image.txt`, the
@@ -735,7 +735,7 @@ In priority order:
 Reproducibility is no longer listed as a gap, but the evidence is worth knowing
 precisely, because it is narrower than "reproducible":
 
-- **Cross-host, same inputs.** At the store-reference-scrub change, the standard
+- **Cross-host, same inputs.** At the store-reference-scrub change, the no-GLX
   x86_64 archive hashed to
   `eaa1d161…` from both a local sandbox and a GitHub-hosted runner. Different
   hosts, different kernels, same bytes.
@@ -805,7 +805,7 @@ Closed, and kept here so the record is not re-opened by accident:
   `--argstr backend zink` for the external Vulkan ones.
 - **Close the test-coverage asymmetry** (was the other half of gap 3). The
   `-keyboard` selector and the `corruptEmbeddedProfile` fault injection used to
-  run only against the standard variant, even though both GLX variants embed
+  run only against the no-GLX variant, even though both GLX variants embed
   the same catalog through the same `nix/keymap-catalog.nix` and apply the
   same patch. `package-glx-llvmpipe.nix` and `package-glx-external-vulkan.nix`
   now take the same `corruptEmbeddedProfile` parameter `package.nix` always

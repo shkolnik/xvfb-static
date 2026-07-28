@@ -1,7 +1,7 @@
 # Shared licence-text extractor, interpolated into every package derivation.
 #
 # Kept in one file because the hardened matcher below was originally written for
-# the GLX derivations only: the standard package kept an older
+# the GLX derivations only: the no-GLX package kept an older
 # `tar -tf --wildcards "*/$rel"` form that matches at any depth, so the fix
 # reached two of three copies. Extract exactly the pinned source's own text, or
 # fail -- never guess between candidates.
