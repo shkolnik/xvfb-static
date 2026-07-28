@@ -928,11 +928,15 @@ find . -maxdepth 3 -type f -print | sort
 # treats the rest as positional parameters, so it exits 0 on a broken b.sh.
 for script in $(git ls-files '*.sh'); do bash -n "$script"; done
 
-# Find accidental legacy branding or absolute paths. /src is included because
-# it is the container mount point, and Nix files must not hardcode it: doing so
-# makes them unevaluatable outside Docker. Hits inside build scripts and
-# workflows, which legitimately construct the mount, are expected.
-rg -n 'legacy-product-name|/workspace|/home/|/src' . --glob '!AGENTS.md'
+# Find accidental legacy branding or absolute paths. "pack" is the product name
+# this project used before it was xvfb-static; it survived for a long time in
+# patch headers, in patched source comments, and in one diagnostic compiled into
+# the binary, so it is worth re-checking rather than assuming it is gone. /src is
+# included because it is the container mount point, and Nix files must not
+# hardcode it: doing so makes them unevaluatable outside Docker. Hits inside
+# build scripts and workflows, which legitimately construct the mount, are
+# expected.
+rg -niw -e pack -e /workspace -e /home/ -e /src . --glob '!AGENTS.md'
 
 # Inspect output
 file out/no-glx/x86_64/package/bin/Xvfb

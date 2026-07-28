@@ -104,7 +104,7 @@ renaming or extraction of the archive.
 ## Versions and releases
 
 Release versions follow `v<upstream-xorg-version>-r<revision>`, for example
-`v21.1.20-r1`. The first portion is the X.Org Server version that provides
+`v21.1.24-r1`. The first portion is the X.Org Server version that provides
 Xvfb. The `r` suffix is this project's packaging revision and starts again at
 `r1` when the upstream version changes. Changes to patches, dependencies, the
 toolchain, or packaging that produce new release bytes increment the revision.
