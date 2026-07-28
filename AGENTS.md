@@ -26,10 +26,17 @@ GitHub-hosted runners.
 
 - Tags `v21.1.23-r1` through `v21.1.23-r4` exist, and `-r2`, `-r3`, and `-r4`
   are published GitHub Releases carrying all six archives plus one combined
-  `SHA256SUMS`. Publication is gated on the full build-and-test matrix, so
-  those releases are evidence of clean-checkout builds and passing Alpine
-  smoke tests on both native architectures.
-- Five X.Org patches are applied (see section 7), plus three Mesa patches, one
+  `SHA256SUMS`, all built against X.Org Server 21.1.23. Publication is gated
+  on the full build-and-test matrix, so those releases are evidence of
+  clean-checkout builds and passing Alpine smoke tests on both native
+  architectures.
+- The project now builds X.Org Server **21.1.24**: `package.nix`'s
+  `xvfbPatched` tracks `pkgsStatic.xorg-server`'s own `src`/`version` rather
+  than nixpkgs' `xvfb` attribute, which pins an older `src` as an internal
+  rebuild-avoidance hack. `releaseRevision` has been reset from `5` to `1` per
+  section 10's rule that it resets to `r1` when upstream changes, so the next
+  tag is `v21.1.24-r1`, not a continuation of the `v21.1.23` series.
+- Six X.Org patches are applied (see section 7), plus three Mesa patches, one
   LLVM patch, and one umoci patch used by the GLX and manylinux toolchains.
 - The GLX llvmpipe and external Vulkan variants are alpha-stage and are
   labelled as such in their names, manifests, and release notes. The external
@@ -146,6 +153,20 @@ Implementation must preserve these invariants:
 See `docs/KEYBOARD-INPUT-ARCHITECTURE.md` for portable consumer-side
 architecture recommendations.
 
+### Core pointer scroll valuators
+
+The XTEST-injected core pointer — the "Virtual core XTEST pointer" slave that
+`CorePointerProc` builds, and the device XTEST-based input actually reaches —
+advertises an XI2.1 `ScrollClass` with two scroll valuators: a horizontal axis
+(`SCROLL_FLAG_NONE`) and a vertical axis (`SCROLL_FLAG_PREFERRED`), both with
+increment `120.0`. One legacy wheel click moves the axis by exactly one
+increment, so the class is strictly additive: clients that only understand
+core wheel buttons 4/5/6/7 keep working unchanged, since
+`SCROLL_FLAG_DONT_EMULATE` is deliberately not set on either axis. See
+`patches/xserver-0006-scroll-valuators.patch` for the full rationale,
+including why the class lives on `CorePointerProc`'s device rather than
+`hw/vfb/InitInput.c`'s unrelated `vfbMouseProc` device.
+
 ### Non-goals
 
 - Building Xorg, Xwayland, XQuartz, or a physical-display X server.
@@ -223,6 +244,7 @@ to their named upstreams. See section 7 for ordering rules.
 | `patches/xserver-0003-keyboard-profile-option.patch` | Adds the Xvfb-only `-keyboard PROFILE` startup selector. |
 | `patches/xserver-0004-component-log-prefixes.patch` | Adds stable component labels to project-owned Xserver and XKB diagnostics. |
 | `patches/xserver-0005-linked-swrast.patch` | GLX variants only: resolves the statically linked GL driver instead of dlopening a DRI module. |
+| `patches/xserver-0006-scroll-valuators.patch` | All three variants: grows the core pointer from 2 to 4 valuator axes and advertises an XI2.1 `ScrollClass` (horizontal, vertical) on `CorePointerProc`'s device. |
 | `patches/mesa-0001-check-jit-before-use.patch` | Prevents Mesa from assuming an LLVM JIT that the no-LLVM configuration does not provide. |
 | `patches/mesa-0002-linked-swrast-entrypoint.patch` | Exposes the statically linked swrast entry point the xserver patch above expects. |
 | `patches/mesa-0003-force-linked-zink.patch` | Forces Zink selection so no software renderer can be substituted silently. |
@@ -257,6 +279,8 @@ to their named upstreams. See section 7 for ordering rules.
 | `test/glx-external-vulkan-smoke.sh` | Verifies the host-assisted ABI against the declared glibc floor, the loud missing-loader failure, and Zink render/readback. Also boots `-keyboard` (success, unknown, and missing-profile cases) and the corrupted-profile fault injection against a working Vulkan ICD, since this variant cannot take the flake's `keyboard-profiles` check; see `test/glx-external-vulkan-corrupt.nix`. Needs a glibc environment, not Alpine. |
 | `test/glx-external-vulkan-corrupt.nix` | Builds the external Vulkan Xvfb binary with one embedded keyboard profile corrupted, for the fault-injection assertion in `test/glx-external-vulkan-smoke.sh`. Reuses `package-glx-external-vulkan.nix`'s own `corruptEmbeddedProfile` parameter. |
 | `test/glx-render.nix` / `test/glx-render.c` | The GLX client used for render/readback checks. |
+| `test/xi2-scroll-check.c` | Runtime prover for the XI2.1 `ScrollClass` patch (`xserver-0006`): checks the XTEST pointer's scroll class, legacy wheel-button emulation, and valuator-injection motion, each against its own freshly booted Xvfb session. Invoked as the optional trailing scroll-check-binary argument to `test/smoke.sh` and `test/glx-external-vulkan-smoke.sh`. |
+| `test/xi2-scroll-check.nix` | The pure flake package that builds `test/xi2-scroll-check.c` into a static `bin/xi2-scroll-check`, wired as `packages.<system>.xi2-scroll-check-<arch>`. |
 | `test/integration.sh` | Runs a named Nix check (default `keyboard-profiles`) in the pinned container; also takes `glx-llvmpipe-keyboard-profiles`. |
 | `test/manylinux-2-28-lock.sh` | Asserts the image lock's shape and that a divergent lock is rejected. |
 | `test/manylinux-2-28-toolchain.sh` / `test/manylinux-2-28-toolchain.nix` | The glibc symbol-version gate: compiles the probes below and fails on any import newer than the declared floor. |
@@ -311,6 +335,14 @@ resolving `test/glx-external-vulkan-corrupt.nix`.
 The `libxcvt` workaround itself is still needed: nixpkgs hard-codes Meson
 `shared_library()`, which ignores the static toolchain, so the project replaces
 it with `library()`.
+
+The flake also exposes a fourth, simpler package family alongside the three
+Xvfb variants: `packages.<system>.xi2-scroll-check-<arch>`, built by
+`test/xi2-scroll-check.nix`. It is an ordinary pure `callPackage` module, not
+an Xvfb build, and produces the static XI2.1 scroll-check client described in
+section 4. CI and the release workflow build it once per architecture and
+hand its binary to `test/smoke.sh` and `test/glx-external-vulkan-smoke.sh` as
+their optional trailing argument.
 
 ### Layer 2: static Xvfb derivation
 
@@ -439,15 +471,31 @@ Before changing a patch:
 prefix. Ordinals are per-family and are only meaningful within a family.
 
 **`xserver-*`** — applied to the pinned X.Org server. All three variants apply
-`0001` through `0004`; the two GLX variants then apply `0005`.
+`0001` through `0004`; the two GLX variants then apply `0005`; all three
+variants then apply `0006` last.
 
 Patch 0001 precedes patch 0002 because patch 0002 was authored against a tree
 with patch 0001 already applied. Patch 0003 then connects the VFB-only parser
 to the embedded loader. Patch 0004 labels the diagnostics introduced by the
 preceding patches, so it must come after all of them. Patch 0005 resolves the
-statically linked GL driver and is applied last in the GLX variants; it touches
-only `glx/` and so does not interact with 0001–0004. Do not reorder them
-casually.
+statically linked GL driver and is applied last in the GLX variants before
+0006; it touches only `glx/` and so does not interact with 0001–0004. Do not
+reorder 0001 through 0005 casually.
+
+Patch 0006 edits `dix/devices.c` only, sharing no file with 0001–0004
+(`xkb/`) or 0005 (`glx/`), so its position in the chain is free. It is applied
+last only because it was appended last. This is unlike 0001–0005, whose
+relative order is load-bearing.
+
+Its one hard ordering constraint is internal to `CorePointerProc`: the two
+`SetScrollValuator()` calls must run after `InitPointerDeviceStruct()`
+returns. `InitPointerDeviceStruct` calls `InitValuatorAxisStruct` for every
+axis, and `InitValuatorAxisStruct` ends with
+`SetScrollValuator(dev, axnum, SCROLL_TYPE_NONE, 0, SCROLL_FLAG_NONE)`
+(`Xi/exevents.c`), silently clearing any scroll marking already set on that
+axis — no error, no log line, the class simply absent from `XIQueryDevice`
+output at runtime. The patch's calls therefore sit immediately before
+`CorePointerProc`'s existing `break;`.
 
 `0005` was renumbered from `0004` in July 2026: two patches shared that ordinal,
 which made "0004 must remain last" ambiguous and, taken literally, wrong. If you
@@ -707,8 +755,15 @@ and the derivation graph are stable, not that a from-scratch rebuild lands on
 the same bytes.
 
 Four of the six archives changed bytes during that series (the two external
-Vulkan ones did not), so the next release needs a `releaseRevision` bump;
-`release.sh` derives it from the published tags itself.
+Vulkan ones did not); at the time, that meant the next release would need a
+`releaseRevision` bump within the `v21.1.23` series. That specific bump is now
+moot: the project has since moved to X.Org Server 21.1.24 (section 2), which
+resets `releaseRevision` to `r1` on its own terms rather than incrementing it,
+so the next tag is `v21.1.24-r1`. `release.sh` derives the revision from the
+published tags itself. The scroll-valuator patch and the src/version tracking
+change that brought in 21.1.24 post-date all the reproducibility evidence
+above; treat a from-scratch double build of the new bytes as still owed, not
+as covered by that earlier evidence.
 
 Closed, and kept here so the record is not re-opened by accident:
 

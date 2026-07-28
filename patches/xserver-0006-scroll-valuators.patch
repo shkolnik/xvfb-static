@@ -1,0 +1,77 @@
+xvfb-static: advertise an XI2.1 ScrollClass on the core pointer
+
+Grows the core pointer from 2 valuator axes to 4 and marks the two new axes
+as scrolling:
+
+  SetScrollValuator(pDev, 2, SCROLL_TYPE_HORIZONTAL, 120.0, SCROLL_FLAG_NONE);
+  SetScrollValuator(pDev, 3, SCROLL_TYPE_VERTICAL,   120.0, SCROLL_FLAG_PREFERRED);
+
+Without a scroll-marked axis, scroll can only be expressed as core wheel
+buttons 4/5/6/7, which carry a button number but no magnitude, so every
+scroll is quantised to exactly one detent. dix/getevents.c's
+wheel-button-to-scroll conversion is already present in this tree and needs
+only an axis marked as scrolling; no other file requires changes.
+
+Ordering within CorePointerProc: the two SetScrollValuator calls must run
+after InitPointerDeviceStruct returns, never before. InitPointerDeviceStruct
+calls InitValuatorAxisStruct for every axis, and InitValuatorAxisStruct ends
+with SetScrollValuator(dev, axnum, SCROLL_TYPE_NONE, 0, SCROLL_FLAG_NONE)
+(Xi/exevents.c), which silently clears any scroll marking already set on that
+axis -- no error, no log line, the class is simply absent from XIQueryDevice
+output at runtime.
+
+CorePointerProc, not hw/vfb/InitInput.c's vfbMouseProc: both compile, and
+both would show a scroll class in a device listing, but only CorePointerProc's
+device is the one XTEST-injected input reaches. CorePointerProc builds the
+"Virtual core XTEST pointer" slave, via AllocDevicePair(..., CorePointerProc,
+CoreKeyboardProc, ...) in InitCoreDevices immediately below in this file;
+vfbMouseProc builds an unrelated "Xvfb mouse" device XTEST never targets. The
+class also belongs on the slave rather than the master: a client tracking the
+master's lastSlave sees a DeviceChanged(SlaveSwitch) if motion and scroll
+arrive from different slaves, which invalidates the first event of a burst.
+
+increment is 120.0 and is a wire contract, not a free parameter. One legacy
+wheel click moves the axis by exactly one increment, so a client can scale
+injected valuator units and legacy clicks identically. Changing it changes
+the meaning of every injected delta.
+
+SCROLL_FLAG_DONT_EMULATE is deliberately not set on either axis. Setting it
+stops the server emitting buttons 4/5/6/7 for scroll motion, which breaks
+every client predating XI2.1. test/xi2-scroll-check.c check b pins this.
+
+Applies to all three build variants: dix/devices.c is core server code, not
+GLX-specific. Ordering relative to xserver-0001 through 0005 is free -- this
+patch touches only dix/devices.c, while 0001 through 0004 touch xkb/ and 0005
+touches glx/.
+
+--- a/dix/devices.c
++++ b/dix/devices.c
+@@ -660,7 +660,7 @@
+ CorePointerProc(DeviceIntPtr pDev, int what)
+ {
+ #define NBUTTONS 10
+-#define NAXES 2
++#define NAXES 4
+     BYTE map[NBUTTONS + 1];
+     int i = 0;
+     Atom btn_labels[NBUTTONS] = { 0 };
+@@ -683,6 +683,8 @@
+
+         axes_labels[0] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_X);
+         axes_labels[1] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_Y);
++        axes_labels[2] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_HWHEEL);
++        axes_labels[3] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_WHEEL);
+
+         if (!InitPointerDeviceStruct
+             ((DevicePtr) pDev, map, NBUTTONS, btn_labels,
+@@ -697,6 +699,10 @@
+         pDev->last.valuators[0] = pDev->valuator->axisVal[0] + scr->x;
+         pDev->valuator->axisVal[1] = scr->height / 2;
+         pDev->last.valuators[1] = pDev->valuator->axisVal[1] + scr->y;
++
++        /* xvfb-static: advertise an XI2.1 ScrollClass (see patch header). */
++        SetScrollValuator(pDev, 2, SCROLL_TYPE_HORIZONTAL, 120.0, SCROLL_FLAG_NONE);
++        SetScrollValuator(pDev, 3, SCROLL_TYPE_VERTICAL, 120.0, SCROLL_FLAG_PREFERRED);
+         break;
+
+     case DEVICE_CLOSE:
