@@ -104,7 +104,7 @@ become unreachable and are dropped from the artifact, along with a fork+execv
 from every display start.
 
 Generated against a tree with xserver-0001 already applied, which is the order
-package.nix lists them in.
+package-no-glx.nix lists them in.
 
 --- a/xkb/ddxLoad.c
 +++ b/xkb/ddxLoad.c
@@ -113,7 +113,7 @@ package.nix lists them in.
  #include "xkb.h"
  
 +/* xvfb-static: the precompiled profile catalog, materialized into this source
-+ * tree by package.nix. It is generated, not committed, so a stale or missing catalog is
++ * tree by package-no-glx.nix. It is generated, not committed, so a stale or missing catalog is
 + * a build failure here, not a runtime surprise. */
 +#include "xvfb_static_keymap_blob.h"
 +

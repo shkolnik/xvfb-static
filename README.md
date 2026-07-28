@@ -109,7 +109,7 @@ Xvfb. The `r` suffix is this project's packaging revision and starts again at
 `r1` when the upstream version changes. Changes to patches, dependencies, the
 toolchain, or packaging that produce new release bytes increment the revision.
 The complete release version and numeric revision are also recorded in each
-archive's manifest. The revision is maintained in `package.nix` and must match
+archive's manifest. The revision is maintained in `package-no-glx.nix` and must match
 the release tag.
 
 Maintainers prepare a release from a clean `main` checkout with:
@@ -119,7 +119,7 @@ Maintainers prepare a release from a clean `main` checkout with:
 ```
 
 The helper fetches GitHub tags, derives the pinned upstream version, selects
-the next revision, updates and commits `package.nix` when necessary, creates a
+the next revision, updates and commits `package-no-glx.nix` when necessary, creates a
 signed annotated tag using the maintainer's configured Git signing key, and
 atomically pushes `main` and the tag to GitHub. In a terminal it previews the
 version and requires confirmation. Use `./release.sh --dry-run` to preview
@@ -142,7 +142,7 @@ Docker is the only host prerequisite:
 
 ```sh
 ./build-no-glx.sh
-./test/smoke.sh
+./test/static-smoke.sh
 ```
 
 With no argument, both scripts select the host architecture. You can pass
@@ -160,7 +160,7 @@ Build and test the native GLX llvmpipe artifact with:
 
 ```sh
 ./build-glx-llvmpipe.sh x86_64
-./test/smoke.sh out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
+./test/static-smoke.sh out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
 ./test/glx-llvmpipe-smoke.sh out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
 ```
 
@@ -178,10 +178,10 @@ archive=out/glx-external-vulkan-alpha/x86_64/xvfb-static-glx-external-vulkan-alp
 ./test/glx-external-vulkan-smoke.sh "$archive"
 ```
 
-Note that `test/smoke.sh` does not apply to this variant: it asserts static
+Note that `test/static-smoke.sh` does not apply to this variant: it asserts static
 linkage and boots in Alpine, and this artifact is host-assisted and needs
 glibc. `test/archive-checks.sh` holds the checks that are common to every
-variant, and `test/smoke.sh` runs it first. The external Vulkan runtime test
+variant, and `test/static-smoke.sh` runs it first. The external Vulkan runtime test
 must run on a glibc distribution with `libvulkan.so.1` and an installed Vulkan
 ICD; it uses a lavapipe runtime for Zink integration coverage, which is not
 actual-GPU coverage.

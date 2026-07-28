@@ -200,7 +200,7 @@ otherwise refuses CPU Vulkan devices.
 `test/archive-checks.sh` additionally runs against this artifact, covering
 archive shape, manifest inventory, license presence, and the absence of XKB
 runtime data — the variant-agnostic checks. It was split out of
-`test/smoke.sh` precisely so this variant could take them: `smoke.sh` asserts
+`test/static-smoke.sh` precisely so this variant could take them: `static-smoke.sh` asserts
 static linkage and boots in Alpine, neither of which applies here, so the
 release workflow used to skip the whole script and this artifact got no archive
 checks at all.

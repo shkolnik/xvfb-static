@@ -105,9 +105,9 @@ if [[ ! "$release_tag" =~ $RELEASE_TAG_REGEX ]]; then
   echo "the release workflow would reject or never trigger on it" >&2
   exit 1
 fi
-current_revision="$(sed -nE 's/^  releaseRevision = ([0-9]+);$/\1/p' package.nix)"
+current_revision="$(sed -nE 's/^  releaseRevision = ([0-9]+);$/\1/p' package-no-glx.nix)"
 if [[ ! "$current_revision" =~ ^[1-9][0-9]*$ ]]; then
-  echo "could not read the unique releaseRevision from package.nix" >&2
+  echo "could not read the unique releaseRevision from package-no-glx.nix" >&2
   exit 1
 fi
 
@@ -118,9 +118,9 @@ printf '  Revision:      r%s -> r%s\n' "$current_revision" "$next_revision"
 printf '  Commit:        %s\n' "$(git rev-parse --short HEAD)"
 printf '  Push target:   %s (%s)\n' "$remote/$branch" "$remote_url"
 if [[ "$current_revision" == "$next_revision" ]]; then
-  printf '  File update:   none; package.nix already has the required revision\n'
+  printf '  File update:   none; package-no-glx.nix already has the required revision\n'
 else
-  printf '  File update:   package.nix releaseRevision\n'
+  printf '  File update:   package-no-glx.nix releaseRevision\n'
 fi
 printf '  Tag:           signed, annotated %s\n\n' "$release_tag"
 
@@ -143,27 +143,27 @@ else
 fi
 
 if [[ "$current_revision" != "$next_revision" ]]; then
-  tmp="$(mktemp "$root/.package.nix.release.XXXXXX")"
+  tmp="$(mktemp "$root/.package-no-glx.nix.release.XXXXXX")"
   trap 'rm -f "$tmp"' EXIT
-  # mktemp creates the file 0600. Seed the temp from package.nix so it carries
-  # package.nix's own mode, then truncate and rewrite it: a plain `>` redirect
+  # mktemp creates the file 0600. Seed the temp from package-no-glx.nix so it carries
+  # package-no-glx.nix's own mode, then truncate and rewrite it: a plain `>` redirect
   # leaves an existing file's permissions alone. Without this the mv below
-  # silently changes package.nix to 0600 on every release, and because Git
+  # silently changes package-no-glx.nix to 0600 on every release, and because Git
   # tracks only the exec bit the change never shows up in review.
-  cp -p package.nix "$tmp"
+  cp -p package-no-glx.nix "$tmp"
   awk -v revision="$next_revision" '
     /^  releaseRevision = [0-9]+;$/ {
       print "  releaseRevision = " revision ";"
       next
     }
     { print }
-  ' package.nix > "$tmp"
-  mv "$tmp" package.nix
+  ' package-no-glx.nix > "$tmp"
+  mv "$tmp" package-no-glx.nix
   trap - EXIT
 
   git diff --check
-  git add -- package.nix
-  git commit -m "Release $release_tag" -- package.nix
+  git add -- package-no-glx.nix
+  git commit -m "Release $release_tag" -- package-no-glx.nix
 fi
 
 evaluated_version="$(

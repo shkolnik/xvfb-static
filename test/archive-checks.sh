@@ -4,7 +4,7 @@
 # Every published archive must satisfy these, including the host-assisted
 # external Vulkan variant that cannot take the fully static Alpine boot test.
 # Keep anything that assumes static linkage or a bootable Alpine container in
-# test/smoke.sh instead; this script must stay safe for all variants.
+# test/static-smoke.sh instead; this script must stay safe for all variants.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

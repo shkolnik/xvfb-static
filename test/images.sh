@@ -3,7 +3,7 @@
 # Sourced, not executed. The shipped bytes are built in the digest-pinned
 # container named by build-image.txt; these are the runtime environments the
 # archives are then tested in, and they were the last unpinned Docker
-# references in the repository. test/smoke.sh and test/glx-llvmpipe-smoke.sh
+# references in the repository. test/static-smoke.sh and test/glx-llvmpipe-smoke.sh
 # had already drifted to different Alpine majors (3.20 and 3.22) while booting
 # the same binary for the same reason.
 #

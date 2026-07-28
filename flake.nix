@@ -10,8 +10,8 @@
       nixpkgsSource = nixpkgs;
       x86Host = import nixpkgs { system = "x86_64-linux"; };
       armHost = import nixpkgs { system = "aarch64-linux"; };
-      mk = pkgs: pkgs.callPackage ./package.nix { };
-      mkCorrupt = pkgs: pkgs.callPackage ./package.nix {
+      mk = pkgs: pkgs.callPackage ./package-no-glx.nix { };
+      mkCorrupt = pkgs: pkgs.callPackage ./package-no-glx.nix {
         corruptEmbeddedProfile = "de";
       };
       mkGlxLlvmpipe = system: pkgs: import ./package-glx-llvmpipe.nix { inherit system pkgs; };
