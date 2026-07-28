@@ -35,6 +35,7 @@ let
       ./patches/xserver-0002-embedded-keymap.patch
       ./patches/xserver-0003-keyboard-profile-option.patch
       ./patches/xserver-0004-component-log-prefixes.patch
+      ./patches/xserver-0006-scroll-valuators.patch
     ];
     postPatch = (old.postPatch or "") + catalog.header;
   });

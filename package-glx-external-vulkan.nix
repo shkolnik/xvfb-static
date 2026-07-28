@@ -142,6 +142,7 @@ let
       ./patches/xserver-0003-keyboard-profile-option.patch
       ./patches/xserver-0004-component-log-prefixes.patch
       ./patches/xserver-0005-linked-swrast.patch
+      ./patches/xserver-0006-scroll-valuators.patch
     ];
     postPatch = (old.postPatch or "") + ''
       substituteInPlace meson.build \
