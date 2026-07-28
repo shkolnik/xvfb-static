@@ -35,6 +35,7 @@
           system = "x86_64-linux";
           inherit nixpkgsSource;
         };
+        xi2-scroll-check-x86_64 = x86Host.pkgsStatic.callPackage ./test/xi2-scroll-check.nix { };
       };
 
       packages.aarch64-linux = {
@@ -45,6 +46,7 @@
           system = "aarch64-linux";
           inherit nixpkgsSource;
         };
+        xi2-scroll-check-aarch64 = armHost.pkgsStatic.callPackage ./test/xi2-scroll-check.nix { };
       };
       checks.x86_64-linux.keyboard-profiles =
         mkCheck x86Host (mk x86Host.pkgsStatic) (mkCorrupt x86Host.pkgsStatic);
