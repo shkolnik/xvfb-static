@@ -30,7 +30,7 @@
       packages.x86_64-linux = {
         default = mk x86Host.pkgsStatic;
         xvfb-static-no-glx-x86_64 = mk x86Host.pkgsStatic;
-        xvfb-static-glx-llvmpipe-alpha-x86_64 = mkGlxLlvmpipe "x86_64-linux" x86Host;
+        xvfb-static-glx-llvmpipe-x86_64 = mkGlxLlvmpipe "x86_64-linux" x86Host;
         xvfb-static-glx-external-vulkan-alpha-x86_64 = import ./package-glx-external-vulkan.nix {
           system = "x86_64-linux";
           inherit nixpkgsSource;
@@ -41,7 +41,7 @@
       packages.aarch64-linux = {
         default = mk armHost.pkgsStatic;
         xvfb-static-no-glx-aarch64 = mk armHost.pkgsStatic;
-        xvfb-static-glx-llvmpipe-alpha-aarch64 = mkGlxLlvmpipe "aarch64-linux" armHost;
+        xvfb-static-glx-llvmpipe-aarch64 = mkGlxLlvmpipe "aarch64-linux" armHost;
         xvfb-static-glx-external-vulkan-alpha-aarch64 = import ./package-glx-external-vulkan.nix {
           system = "aarch64-linux";
           inherit nixpkgsSource;
@@ -52,7 +52,7 @@
         mkCheck x86Host (mk x86Host.pkgsStatic) (mkCorrupt x86Host.pkgsStatic);
       checks.aarch64-linux.no-glx-keyboard-profiles =
         mkCheck armHost (mk armHost.pkgsStatic) (mkCorrupt armHost.pkgsStatic);
-      # The GLX llvmpipe alpha embeds the same catalog through the same
+      # The GLX llvmpipe embeds the same catalog through the same
       # nix/keymap-catalog.nix and stays fully static, so it can run this
       # check directly in the Nix build sandbox exactly like the no-GLX
       # variant. The external Vulkan alpha cannot: see

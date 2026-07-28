@@ -20,7 +20,7 @@ not for feature parity with a distribution Xvfb package.
 ## 2. Current status and provenance
 
 The project builds, tests, and publishes end to end. Both CI and the release
-workflow run a 3-variant × 2-architecture matrix (no-GLX, GLX llvmpipe alpha,
+workflow run a 3-variant × 2-architecture matrix (no-GLX, GLX llvmpipe,
 GLX external Vulkan alpha; x86_64 and aarch64) on matching native
 GitHub-hosted runners.
 
@@ -38,11 +38,17 @@ GitHub-hosted runners.
   tag is `v21.1.24-r1`, not a continuation of the `v21.1.23` series.
 - Six X.Org patches are applied (see section 7), plus three Mesa patches, one
   LLVM patch, and one umoci patch used by the GLX and manylinux toolchains.
-- The GLX llvmpipe and external Vulkan variants are alpha-stage and are
-  labelled as such in their names, manifests, and release notes. The external
-  Vulkan variant is host-assisted and **is published**; what remains unproven
-  is actual-GPU render/readback, which no test in this repository performs.
-  See the release gate in section 10 for exactly what is and is not enforced.
+- Every artifact declares its `variant` and `maturity` in its manifest. The
+  no-GLX and GLX llvmpipe variants are `stable`; the external Vulkan variant is
+  `alpha`, and says so in its name, manifest, and release notes. That one is
+  host-assisted and **is published**; what remains unproven is actual-GPU
+  render/readback, which no test in this repository performs. See the release
+  gates in section 10 for exactly what is and is not enforced.
+- GLX llvmpipe was promoted out of `alpha` because it had no unproven axis
+  left: llvmpipe renders in software, so the configuration CI exercises is the
+  configuration users get, and its coverage is a superset of the no-GLX
+  variant's. The gate it cleared is written down in section 10; do not promote
+  a future variant without recording the equivalent.
 
 Still genuinely open, and not to be erased without evidence: a full
 closure-versus-licence audit (section 9), an SBOM, and actual-GPU validation of
@@ -84,7 +90,7 @@ The archive itself is deterministic given the same declared inputs:
 The GLX variants preserve the one-executable package shape but have distinct
 runtime contracts:
 
-- `xvfb-static-glx-llvmpipe-alpha` statically incorporates Mesa llvmpipe and
+- `xvfb-static-glx-llvmpipe` statically incorporates Mesa llvmpipe and
   LLVM and remains fully static;
 - `xvfb-static-glx-external-vulkan-alpha` statically incorporates Mesa Zink
   but opens the host's `libvulkan.so.1`. It is host-assisted, contains no LLVM
@@ -103,8 +109,10 @@ Take the floor from `nix/manylinux-2-28-images.json`; never restate the number
 in a new file. Earlier revisions of this document named 2.31 as an aspiration —
 that predates the manylinux work and is wrong.
 
-Keep `alpha` synchronized across names, manifests, documentation, CI, and
-release metadata.
+A variant's maturity appears in its manifest, its documentation, its CI and
+release metadata, and -- for anything not `stable` -- its name. Keep those in
+sync; a name that still says `alpha` after a promotion is the failure mode to
+watch for, since nothing but section 10's gate checks the name itself.
 
 ### Intentional capability reduction
 
@@ -203,10 +211,10 @@ Every tracked file appears below. If you add one, add a row.
 | `flake.lock` | Exact nixpkgs revision and content hash. This transitively pins X.Org and linked dependencies. |
 | `package.nix` | Core build: static-libxcvt workaround, embedded keymap, Xvfb override, stripping, license extraction, and manifest generation. |
 | `keyboard-profiles.nix` | The curated profile catalog: the single source of the profile ids and their rules/model/layout/variant/options tuples. |
-| `mesa-llvmpipe.nix` / `package-glx-llvmpipe.nix` | Fully static Mesa llvmpipe/LLVM and GLX Xvfb alpha build. |
+| `mesa-llvmpipe.nix` / `package-glx-llvmpipe.nix` | Fully static Mesa llvmpipe/LLVM and GLX Xvfb build. |
 | `mesa-zink.nix` / `package-glx-external-vulkan.nix` | Host-assisted external Vulkan/Zink alpha build. |
 | `nix/mesa-common.nix` | The `mesa.override` arguments, mesonFlags, and dril-loader skip genuinely shared by both `mesa-llvmpipe.nix` and `mesa-zink.nix`. Deliberately does not unify their package-set construction, `nativeBuildInputs` strategy, `library()`/`static_library()` rewrite, or LLVM/SPIR-V-region mesonFlags, which differ in real build behavior, not formatting. |
-| `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded, plus the `corruptEmbeddedProfile` fault-injection assertion. Parameterized by `xvfbStatic`/`corruptXvfb`; flake.nix wires it against both the no-GLX and the GLX llvmpipe alpha packages, since both are fully static and can run it directly inside the Nix build sandbox. |
+| `integration-test.nix` | Nix check that regenerates the XKB sources for every profile and diffs them against what the build embedded, plus the `corruptEmbeddedProfile` fault-injection assertion. Parameterized by `xvfbStatic`/`corruptXvfb`; flake.nix wires it against both the no-GLX and the GLX llvmpipe packages, since both are fully static and can run it directly inside the Nix build sandbox. |
 | `cachix.nix` | Resolves the Cachix client from the exact nixpkgs revision in `flake.lock`. |
 | `nix/extract-license.sh` | The one hardened license extractor, interpolated into all three package derivations. Includes `extract_license_glob` for packages that ship one license file per component (xorgproto's per-protocol `COPYING-*` files) instead of a single aggregate text. |
 | `nix/license-closure.nix` | The one link-closure walker and license-coverage audit, shared by all three package derivations. Walks `buildInputs`/`propagatedBuildInputs` transitively via `builtins.genericClosure` and fails the build if a reachable package has neither a license entry nor a justified allowlist entry, or if the allowlist names a package no longer in the closure. See `THIRD-PARTY-NOTICES.md`'s "Closure-versus-license audit" section for what it does and does not cover. |
@@ -257,7 +265,7 @@ to their named upstreams. See section 7 for ordering rules.
 |---|---|
 | `build-common.sh` | Sourced, not executed. The shared body of the three build entry points, and the one definition of the build image accessor, the `/nix` volume name, the archive mtime, and the architecture table. |
 | `build-no-glx.sh` | Docker-only entry point and reproducible archive/checksum assembly for the no-GLX variant. |
-| `build-glx-llvmpipe.sh` | Deterministic llvmpipe GLX alpha archive entry point. |
+| `build-glx-llvmpipe.sh` | Deterministic llvmpipe GLX archive entry point. |
 | `build-glx-external-vulkan.sh` | Deterministic external Vulkan GLX alpha archive entry point. |
 | `nix-build-cached.sh` | In-container build wrapper: configures public cache reads, asserts the substituter actually took effect, and pushes new paths when authenticated. |
 | `release.sh` | Local maintainer helper that selects the next release revision, commits it when needed, creates a signed tag, and atomically pushes it to GitHub. |
@@ -281,7 +289,7 @@ to their named upstreams. See section 7 for ordering rules.
 | `test/glx-render.nix` / `test/glx-render.c` | The GLX client used for render/readback checks. |
 | `test/xi2-scroll-check.c` | Runtime prover for the XI2.1 `ScrollClass` patch (`xserver-0006`): checks the XTEST pointer's scroll class, legacy wheel-button emulation, and valuator-injection motion, each against its own freshly booted Xvfb session. Invoked as the optional trailing scroll-check-binary argument to `test/smoke.sh` and `test/glx-external-vulkan-smoke.sh`. |
 | `test/xi2-scroll-check.nix` | The pure flake package that builds `test/xi2-scroll-check.c` into a static `bin/xi2-scroll-check`, wired as `packages.<system>.xi2-scroll-check-<arch>`. |
-| `test/integration.sh` | Runs a named Nix check (default `keyboard-profiles`) in the pinned container; also takes `glx-llvmpipe-keyboard-profiles`. |
+| `test/integration.sh` | Runs a named Nix check (default `no-glx-keyboard-profiles`) in the pinned container; also takes `glx-llvmpipe-keyboard-profiles`. |
 | `test/manylinux-2-28-lock.sh` | Asserts the image lock's shape and that a divergent lock is rejected. |
 | `test/manylinux-2-28-toolchain.sh` / `test/manylinux-2-28-toolchain.nix` | The glibc symbol-version gate: compiles the probes below and fails on any import newer than the declared floor. |
 | `test/manylinux-2-28-probe.c`, `test/manylinux-2-28-probe.cc`, `test/manylinux-2-28-zlib-probe.c` | C, C++, and zlib probes for that gate. |
@@ -680,6 +688,34 @@ Do not claim an architecture is “verified” when it was only cross-compiled.
 Use precise language: built, statically inspected, emulated, or executed on
 real hardware.
 
+### What `maturity: "stable"` requires
+
+A variant may declare `stable` only when it has no unproven axis: every
+capability it advertises is exercised, on both architectures, in the
+configuration users actually get. Concretely:
+
+1. the archive passes `test/archive-checks.sh`;
+2. the packaged binary boots in the clean-container matrix on both
+   architectures, natively, and exercises `-keyboard` success and failure;
+3. the embedded keymap catalog is verified against a regenerated one, and the
+   corrupted-profile fault injection fails as designed;
+4. every rendering path the variant advertises is render/readback-tested on
+   both architectures **against the same implementation a user gets** — not a
+   stand-in;
+5. no capability is advertised that no test covers.
+
+Item 4 is the one that discriminates. The no-GLX variant advertises no
+rendering, so it is vacuous there. GLX llvmpipe renders in software with no
+host driver involved, so CI's llvmpipe *is* the user's llvmpipe and the item is
+met. External Vulkan advertises rendering on the host's GPU, and CI can only
+offer lavapipe, so the item is not met and that variant stays `alpha`.
+
+Maturity is not a measure of age, download count, or field exposure. A variant
+with complete coverage is `stable` on its first release; a variant with a
+capability no test reaches stays `alpha` however long it has shipped. If a
+variant is held below `stable` for a reason not on this list, write the reason
+down here — an unfalsifiable label is worse than an honest gap.
+
 ### External Vulkan alpha: what publication requires
 
 The external Vulkan alpha **is published**, as an explicitly alpha artifact. The
@@ -809,7 +845,7 @@ Closed, and kept here so the record is not re-opened by accident:
   the same catalog through the same `nix/keymap-catalog.nix` and apply the
   same patch. `package-glx-llvmpipe.nix` and `package-glx-external-vulkan.nix`
   now take the same `corruptEmbeddedProfile` parameter `package.nix` always
-  had. The GLX llvmpipe alpha stays fully static, so it runs the existing
+  had. The GLX llvmpipe stays fully static, so it runs the existing
   `integration-test.nix` check directly in the Nix build sandbox, wired as
   `checks.<arch>.glx-llvmpipe-keyboard-profiles` and driven by
   `test/integration.sh <arch> glx-llvmpipe-keyboard-profiles`. The external

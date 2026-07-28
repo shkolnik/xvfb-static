@@ -49,12 +49,12 @@ jobs:
             runner: ubuntu-24.04
             variant: glx-llvmpipe
             glx-backend: llvmpipe
-            archive: out/glx-llvmpipe-alpha/x86_64/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz
+            archive: out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
           - arch: aarch64
             runner: ubuntu-24.04-arm
             variant: glx-llvmpipe
             glx-backend: llvmpipe
-            archive: out/glx-llvmpipe-alpha/aarch64/xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz
+            archive: out/glx-llvmpipe/aarch64/xvfb-static-glx-llvmpipe-linux-aarch64.tar.gz
           - arch: x86_64
             runner: ubuntu-24.04
             variant: glx-external-vulkan
@@ -100,7 +100,7 @@ jobs:
         name: Build no-GLX archive
         run: ./build-no-glx.sh "${{ matrix.arch }}"
       - if: matrix.variant == 'glx-llvmpipe'
-        name: Build GLX llvmpipe alpha archive
+        name: Build GLX llvmpipe archive
         run: ./build-glx-llvmpipe.sh "${{ matrix.arch }}"
       - if: matrix.variant == 'glx-external-vulkan'
         name: Build GLX external Vulkan alpha archive
@@ -120,7 +120,7 @@ jobs:
         name: Verify all embedded keyboard profiles
         run: ./test/integration.sh "${{ matrix.arch }}" no-glx-keyboard-profiles
       - if: matrix.variant == 'glx-llvmpipe'
-        name: Verify all embedded keyboard profiles (GLX llvmpipe alpha)
+        name: Verify all embedded keyboard profiles (GLX llvmpipe)
         run: ./test/integration.sh "${{ matrix.arch }}" glx-llvmpipe-keyboard-profiles
 
       - if: matrix.variant != 'no-glx'
@@ -147,7 +147,7 @@ jobs:
           test -x result-glx-render-test/bin/glx-render-test
 
       - if: matrix.variant == 'glx-llvmpipe'
-        name: Render with packaged GLX llvmpipe alpha in Alpine
+        name: Render with packaged GLX llvmpipe in Alpine
         run: ./test/glx-llvmpipe-smoke.sh "${{ matrix.archive }}"
 
       # The glibc-2.28 symbol gate is load-bearing for the host-assisted
@@ -194,10 +194,10 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: matrix.variant == 'glx-llvmpipe'
         with:
-          name: xvfb-static-glx-llvmpipe-alpha-linux-${{ matrix.arch }}
+          name: xvfb-static-glx-llvmpipe-linux-${{ matrix.arch }}
           path: |
             ${{ matrix.archive }}
-            out/glx-llvmpipe-alpha/${{ matrix.arch }}/SHA256SUMS
+            out/glx-llvmpipe/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: matrix.variant == 'glx-external-vulkan'

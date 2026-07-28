@@ -53,10 +53,11 @@ motion. That is the extent of the claim; how any given client maps valuator
 units onto its own scroll model is outside this project.
 
 The **no-GLX** artifacts disable GLX to minimize size and dependency surface.
-Separate **GLX llvmpipe alpha** artifacts embed Mesa llvmpipe for software-rendered,
-indirect GLX without a host GPU driver or shared library. They are larger and
-remain explicitly experimental while their compatibility receives broader
-testing.
+Separate **GLX llvmpipe** artifacts embed Mesa llvmpipe for software-rendered,
+indirect GLX without a host GPU driver or shared library. They are larger, and
+otherwise carry the same guarantees: fully static, boot-tested in clean Alpine,
+and render-tested on both architectures. Because llvmpipe renders in software,
+the configuration CI exercises is the configuration you get.
 
 An **external Vulkan GLX alpha** artifact takes the opposite tradeoff. It
 statically incorporates Mesa Zink but deliberately opens the host's
@@ -84,8 +85,8 @@ Published GitHub Releases contain:
 
 - `xvfb-static-no-glx-linux-x86_64.tar.gz`
 - `xvfb-static-no-glx-linux-aarch64.tar.gz`
-- `xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz`
-- `xvfb-static-glx-llvmpipe-alpha-linux-aarch64.tar.gz`
+- `xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz`
+- `xvfb-static-glx-llvmpipe-linux-aarch64.tar.gz`
 - `xvfb-static-glx-external-vulkan-alpha-linux-x86_64.tar.gz`
 - `xvfb-static-glx-external-vulkan-alpha-linux-aarch64.tar.gz`
 - `SHA256SUMS`
@@ -96,7 +97,7 @@ proves Zink/Vulkan integration with lavapipe, not actual-GPU execution.
 
 Each archive contains `bin/Xvfb`, a machine-readable manifest, and the exact
 third-party license texts applicable to the binary. GLX manifests additionally
-declare `"variant": "glx"`, `"maturity": "alpha"`, and the renderer
+declare `"variant": "glx"`, their maturity, and the renderer
 (`"llvmpipe"` or `"zink"`) so the experimental status and backend survive
 renaming or extraction of the archive.
 
@@ -124,7 +125,7 @@ atomically pushes `main` and the tag to GitHub. In a terminal it previews the
 version and requires confirmation. Use `./release.sh --dry-run` to preview
 without changing files, commits, tags, or remote branches.
 
-Pushing a matching tag builds and smoke-tests the no-GLX, GLX llvmpipe alpha,
+Pushing a matching tag builds and smoke-tests the no-GLX, GLX llvmpipe,
 and GLX external Vulkan alpha variants for x86_64 and aarch64 on native
 GitHub-hosted runners. The GLX tests render and read pixels back for
 verification; the external Vulkan test uses lavapipe for integration coverage
@@ -155,12 +156,12 @@ installation:
 nix build .#default
 ```
 
-Build and test the native GLX llvmpipe alpha artifact with:
+Build and test the native GLX llvmpipe artifact with:
 
 ```sh
 ./build-glx-llvmpipe.sh x86_64
-./test/smoke.sh out/glx-llvmpipe-alpha/x86_64/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz
-./test/glx-llvmpipe-smoke.sh out/glx-llvmpipe-alpha/x86_64/xvfb-static-glx-llvmpipe-alpha-linux-x86_64.tar.gz
+./test/smoke.sh out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
+./test/glx-llvmpipe-smoke.sh out/glx-llvmpipe/x86_64/xvfb-static-glx-llvmpipe-linux-x86_64.tar.gz
 ```
 
 The explicit architecture names accepted by `build-glx-llvmpipe.sh` are `x86_64` and
@@ -201,8 +202,8 @@ was produced by this repository's release workflow from its tagged commit.
 `file` should report `statically linked`. The smoke test additionally boots the
 server in a clean Alpine container with no X11 packages.
 
-For a GLX llvmpipe alpha download, substitute its full filename in both checksum and
-attestation commands. Its manifest should identify the `glx` variant, `alpha`
+For a GLX llvmpipe download, substitute its full filename in both checksum and
+attestation commands. Its manifest should identify the `glx` variant, `stable`
 maturity, llvmpipe renderer, and pinned Mesa and LLVM versions.
 
 An external Vulkan alpha download is host-assisted, so `file` reports a dynamic

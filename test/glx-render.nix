@@ -6,7 +6,7 @@
 #
 # Build it against the same backend as the archive under test:
 # mesa-llvmpipe.nix (LLVM plus llvmpipe, fully static pkgsStatic build) for
-# the llvmpipe alpha, mesa-zink.nix built with the manylinux_2_28 toolchain
+# the llvmpipe, mesa-zink.nix built with the manylinux_2_28 toolchain
 # (no LLVM at all, static libraries over a dynamic host glibc) for the
 # external Vulkan alpha. Building the external-Vulkan client against
 # mesa-llvmpipe.nix would link the one binary that is supposed to exercise

@@ -13,7 +13,7 @@ let
   # passthru, once in the manifest jq filter -- with nothing checking the
   # two copies agreed.
   variant = "glx";
-  maturity = "alpha";
+  maturity = "stable";
   renderer = "llvmpipe";
   graphicsBackend = "embedded";
   runtimeModel = "fully-static";
@@ -193,7 +193,7 @@ let
   ];
   licenseAudit = licenseClosure.audit {
     root = xvfbGlx;
-    label = "xvfb-static-glx-llvmpipe-alpha";
+    label = "xvfb-static-glx-llvmpipe";
     entries = licenseEntries;
     allowlist = licenseAllowlist;
     extraCoveredPnames = [ "xorgproto" ];
@@ -228,7 +228,7 @@ assert pkgs.lib.assertMsg (xvfbGlx.version == standardPackage.upstreamVersion) '
   ${standardPackage.upstreamVersion}. The manifest's version and xorg-server
   fields would disagree.'';
 assert pkgs.lib.assertMsg licenseAudit.ok licenseAudit.message;
-static.runCommand "xvfb-static-glx-llvmpipe-alpha-${releaseVersion}" {
+static.runCommand "xvfb-static-glx-llvmpipe-${releaseVersion}" {
   inherit nativeBuildInputs;
   passthru = {
     inherit releaseRevision releaseVersion;

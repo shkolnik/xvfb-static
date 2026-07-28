@@ -11,7 +11,7 @@ if [[ -z "$archive" ]]; then
     aarch64|arm64) arch="aarch64" ;;
     *) echo "unsupported host architecture: $(uname -m)" >&2; exit 2 ;;
   esac
-  archive="$root/out/glx-llvmpipe-alpha/$arch/xvfb-static-glx-llvmpipe-alpha-linux-$arch.tar.gz"
+  archive="$root/out/glx-llvmpipe/$arch/xvfb-static-glx-llvmpipe-linux-$arch.tar.gz"
 fi
 
 test -s "$archive" || { echo "missing archive: $archive" >&2; exit 1; }
@@ -28,7 +28,7 @@ trap cleanup EXIT
 
 tar -xzf "$archive" -C "$tmp"
 cp -L "$render_test" "$tmp/glx-render-test"
-jq -e '.variant == "glx" and .maturity == "alpha" and .renderer == "llvmpipe"' \
+jq -e '.variant == "glx" and .maturity == "stable" and .renderer == "llvmpipe"' \
   "$tmp/share/xvfb-static/manifest.json" >/dev/null
 
 docker run --name "$name" --rm \
@@ -46,4 +46,4 @@ docker run --name "$name" --rm \
     trap - EXIT
   '
 
-echo "xvfb-static GLX llvmpipe alpha render smoke test passed"
+echo "xvfb-static GLX llvmpipe render smoke test passed"
