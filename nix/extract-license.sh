@@ -35,3 +35,36 @@ extract_license() {
     test -s "$dest"
   fi
 }
+
+# xorgproto ships one COPYING-<protocol> file per protocol instead of one
+# aggregate license file, so a single extract_license call cannot represent
+# it accurately. Copies every top-level file matching a shell glob, each
+# renamed with destprefix prepended to its basename -- flat files, not a
+# subdirectory, because the archive assembly step in build-common.sh installs
+# licenses/* with a single flat `install -m`, which cannot descend into a
+# directory. Fails if nothing matches.
+extract_license_glob() {
+  src="$1"; pattern="$2"; destprefix="$3"
+  found=0
+  if [ -d "$src" ]; then
+    for f in "$src"/$pattern; do
+      [ -e "$f" ] || continue
+      cp "$f" "${destprefix}$(basename "$f")"
+      found=$((found + 1))
+    done
+  else
+    while IFS= read -r member; do
+      [ -n "$member" ] || continue
+      tar -xf "$src" -O "$member" > "${destprefix}${member##*/}"
+      found=$((found + 1))
+    done < <(tar -tf "$src" | while IFS= read -r m; do
+      base="${m##*/}"; prefix="${m%/*}"
+      case "$prefix" in */*) continue ;; esac
+      case "$base" in $pattern) printf '%s\n' "$m" ;; esac
+    done)
+  fi
+  if [ "$found" -eq 0 ]; then
+    echo "xvfb-static: expected at least one match for $pattern in $src, found none" >&2
+    exit 1
+  fi
+}

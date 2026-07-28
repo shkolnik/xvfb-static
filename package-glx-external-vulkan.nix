@@ -24,6 +24,7 @@ let
     hostPkgs = hostPkgs;
   };
   manifest = import ./nix/manifest.nix { inherit (pkgs) lib; };
+  licenseClosure = import ./nix/license-closure.nix { inherit (pkgs) lib; };
   # Single source for the fields that used to be written twice -- once in
   # passthru, once in the manifest jq filter -- with nothing checking the
   # two copies agreed.
@@ -163,6 +164,107 @@ endif" "message('Skipping unshipped Xserver test targets')"
       patchelf --set-interpreter ${interpreter} --remove-rpath $out/bin/Xvfb
     '';
   });
+  # pkgs.stdenv.cc.cc(.lib) is referenced below only for libstdc++'s own two
+  # license files; its buildInputs describe what was needed to *build* GCC
+  # (gmp, mpfr, isl, python3, bash, ...), not what Xvfb links against. See
+  # nix/license-closure.nix's opaqueLeaves doc comment and
+  # package-glx-llvmpipe.nix, which hit the same closure noise first.
+  licenseOpaqueLeaves = [ pkgs.stdenv.cc.cc.lib ];
+  findClosurePkg = licenseClosure.findInClosure {
+    root = xvfbGlx;
+    opaqueLeaves = licenseOpaqueLeaves;
+  };
+  licenseEntries = [
+    { pkg = pkgs.xorg-server; rel = "COPYING"; dest = "xorg-server.COPYING"; }
+    { pkg = hostPkgs.xkbcomp; rel = "COPYING"; dest = "xkbcomp.COPYING"; }
+    { pkg = hostPkgs.xkeyboard_config; rel = "COPYING"; dest = "xkeyboard-config.COPYING"; }
+    { pkg = pkgs.libx11; rel = "COPYING"; dest = "libX11.COPYING"; }
+    { pkg = pkgs.libxext; rel = "COPYING"; dest = "libXext.COPYING"; }
+    { pkg = pkgs.libxfont_2; rel = "COPYING"; dest = "libXfont2.COPYING"; }
+    { pkg = pkgs.libxcvt; rel = "COPYING"; dest = "libxcvt.COPYING"; }
+    { pkg = pkgs.pixman; rel = "COPYING"; dest = "pixman.COPYING"; }
+    { pkg = pkgs.zlib; rel = "LICENSE"; dest = "zlib.LICENSE"; }
+    { pkg = pkgs.libmd; rel = "COPYING"; dest = "libmd.COPYING"; }
+    { pkg = pkgs.mesa; rel = "docs/license.rst"; dest = "mesa.LICENSE"; }
+    # libdrm's release archive has no standalone COPYING file. Its primary
+    # public header carries the complete MIT notice; retain that exact
+    # pinned source file rather than sourcing replacement text elsewhere.
+    { pkg = pkgs.libdrm; rel = "xf86drm.h"; dest = "libdrm-xf86drm.LICENSE-SOURCE"; }
+    { pkg = pkgs.libxshmfence; rel = "COPYING"; dest = "libxshmfence.COPYING"; }
+    { pkg = pkgs.libxrandr; rel = "COPYING"; dest = "libXrandr.COPYING"; }
+    { pkg = pkgs.libxrender; rel = "COPYING"; dest = "libXrender.COPYING"; }
+    { pkg = pkgs.libxxf86vm; rel = "COPYING"; dest = "libXxf86vm.COPYING"; }
+    { pkg = pkgs.libxcb; rel = "COPYING"; dest = "libxcb.COPYING"; }
+    { pkg = pkgs.libxau; rel = "COPYING"; dest = "libXau.COPYING"; }
+    { pkg = pkgs.libxdmcp; rel = "COPYING"; dest = "libXdmcp.COPYING"; }
+    { pkg = pkgs.libxfixes; rel = "COPYING"; dest = "libXfixes.COPYING"; }
+    { pkg = pkgs.expat; rel = "COPYING"; dest = "expat.COPYING"; }
+    { pkg = pkgs.stdenv.cc.cc; rel = "COPYING3"; dest = "libstdc++-COPYING3"; }
+    { pkg = pkgs.stdenv.cc.cc; rel = "COPYING.RUNTIME"; dest = "libstdc++-COPYING.RUNTIME"; }
+
+    # Below: found via the link-closure walk by pname, not a new explicit
+    # reference, since nixpkgs' pname and its top-level attribute name
+    # frequently disagree (e.g. pname "libxcb-image" is attribute
+    # xcbutilimage). Same set as the standard and llvmpipe variants; see
+    # package.nix for the freetype and mesa-gl-headers licensing rationale.
+    { pkg = findClosurePkg "brotli"; rel = "LICENSE"; dest = "brotli.LICENSE"; }
+    { pkg = findClosurePkg "bzip2"; rel = "LICENSE"; dest = "bzip2.LICENSE"; }
+    { pkg = findClosurePkg "font-util"; rel = "COPYING"; dest = "font-util.COPYING"; }
+    { pkg = findClosurePkg "freetype"; rel = "docs/FTL.TXT"; dest = "freetype.FTL"; }
+    { pkg = findClosurePkg "libfontenc"; rel = "COPYING"; dest = "libfontenc.COPYING"; }
+    { pkg = findClosurePkg "libpng-apng"; rel = "LICENSE"; dest = "libpng.LICENSE"; }
+    { pkg = findClosurePkg "libpthread-stubs"; rel = "COPYING"; dest = "libpthread-stubs.COPYING"; }
+    { pkg = findClosurePkg "libxcb-image"; rel = "COPYING"; dest = "xcb-util-image.COPYING"; }
+    { pkg = findClosurePkg "libxcb-keysyms"; rel = "COPYING"; dest = "xcb-util-keysyms.COPYING"; }
+    { pkg = findClosurePkg "libxcb-render-util"; rel = "COPYING"; dest = "xcb-util-renderutil.COPYING"; }
+    { pkg = findClosurePkg "libxcb-util"; rel = "COPYING"; dest = "xcb-util.COPYING"; }
+    { pkg = findClosurePkg "libxcb-wm"; rel = "COPYING"; dest = "xcb-util-wm.COPYING"; }
+    { pkg = findClosurePkg "libxkbfile"; rel = "COPYING"; dest = "libxkbfile.COPYING"; }
+    { pkg = findClosurePkg "mesa-gl-headers"; rel = "licenses/Apache-2.0"; dest = "mesa-gl-headers.Apache-2.0"; }
+    { pkg = findClosurePkg "mesa-gl-headers"; rel = "licenses/MIT"; dest = "mesa-gl-headers.MIT"; }
+    { pkg = findClosurePkg "mesa-gl-headers"; rel = "licenses/SGI-B-2.0"; dest = "mesa-gl-headers.SGI-B-2.0"; }
+    # opensslStatic replaces pkgs.openssl in xvfbGlx's actual buildInputs
+    # (see prepareDependencies above); findClosurePkg resolves to that same
+    # overridden object, whose .src is the identical pinned openssl source.
+    { pkg = findClosurePkg "openssl"; rel = "LICENSE.txt"; dest = "openssl.LICENSE"; }
+    { pkg = findClosurePkg "xcb-proto"; rel = "COPYING"; dest = "xcb-proto.COPYING"; }
+    { pkg = findClosurePkg "xtrans"; rel = "COPYING"; dest = "xtrans.COPYING"; }
+    # zstd is dual-licensed (BSD or GPLv2, its own LICENSE/COPYING files
+    # respectively); elect the permissive BSD text, consistent with
+    # freetype's FTL election and the llvmpipe variant's zstd entry.
+    { pkg = findClosurePkg "zstd"; rel = "LICENSE"; dest = "zstd.LICENSE"; }
+  ];
+  xorgprotoPkg = findClosurePkg "xorgproto";
+  licenseAllowlist = [
+    {
+      pname = "dri-pkgconfig-stub";
+      reason = "nixpkgs-internal generated pkg-config stub (writes a .pc file at build time); carries no upstream source or license.";
+    }
+    {
+      pname = "empty-directory";
+      reason = "nixpkgs-internal placeholder derivation used wherever an optional dependency is disabled; carries no upstream source.";
+    }
+    {
+      pname = "bash";
+      reason = "pulled in by nixpkgs setup-hook scripts; an interpreter for build-time hooks, not linked into the shipped binary.";
+    }
+    # Unlike the llvmpipe variant, this closure does not reach libxml2 (no
+    # LLVM here) or the rest of that xz/find-xml-catalogs-hook chain, so
+    # those entries have no match to allowlist here -- an unmatched
+    # allowlist entry fails the audit as a stale-entry protection. See
+    # package-glx-llvmpipe.nix for where that chain does apply.
+  ];
+  licenseAudit = licenseClosure.audit {
+    root = xvfbGlx;
+    label = "xvfb-static-glx-external-vulkan-alpha";
+    entries = licenseEntries;
+    allowlist = licenseAllowlist;
+    extraCoveredPnames = [ "xorgproto" ];
+    opaqueLeaves = licenseOpaqueLeaves;
+  };
+  licenseExtractLines = pkgs.lib.concatMapStrings
+    (e: "extract_license ${e.pkg.src} ${e.rel} $L/${e.dest}\n")
+    licenseEntries;
   standardPackage = static.callPackage ./package.nix { };
   releaseVersion = standardPackage.releaseVersion;
   releaseRevision = standardPackage.releaseRevision;
@@ -178,6 +280,7 @@ assert pkgs.lib.assertMsg (xvfbGlx.version == standardPackage.upstreamVersion) '
   ${xvfbGlx.version}, but the standard static package reports
   ${standardPackage.upstreamVersion}. The manifest's version and xorg-server
   fields would disagree.'';
+assert pkgs.lib.assertMsg licenseAudit.ok licenseAudit.message;
 pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   nativeBuildInputs = [
     hostPkgs.gnutar
@@ -239,32 +342,8 @@ pkgs.runCommand "xvfb-static-glx-external-vulkan-alpha-${releaseVersion}" {
   ${builtins.readFile ./nix/extract-license.sh}
 
   L=$out/share/xvfb-static/licenses
-  extract_license ${pkgs.xorg-server.src} COPYING $L/xorg-server.COPYING
-  extract_license ${pkgs.xkbcomp.src} COPYING $L/xkbcomp.COPYING
-  extract_license ${pkgs.xkeyboard_config.src} COPYING $L/xkeyboard-config.COPYING
-  extract_license ${pkgs.libx11.src} COPYING $L/libX11.COPYING
-  extract_license ${pkgs.libxext.src} COPYING $L/libXext.COPYING
-  extract_license ${pkgs.libxfont_2.src} COPYING $L/libXfont2.COPYING
-  extract_license ${pkgs.libxcvt.src} COPYING $L/libxcvt.COPYING
-  extract_license ${pkgs.pixman.src} COPYING $L/pixman.COPYING
-  extract_license ${pkgs.zlib.src} LICENSE $L/zlib.LICENSE
-  extract_license ${pkgs.libmd.src} COPYING $L/libmd.COPYING
-  extract_license ${pkgs.mesa.src} docs/license.rst $L/mesa.LICENSE
-  # libdrm 2.4.133's release archive has no standalone COPYING file. Its
-  # primary public header carries the complete MIT notice; retain that exact
-  # pinned source file rather than sourcing replacement text elsewhere.
-  extract_license ${pkgs.libdrm.src} xf86drm.h $L/libdrm-xf86drm.LICENSE-SOURCE
-  extract_license ${pkgs.libxshmfence.src} COPYING $L/libxshmfence.COPYING
-  extract_license ${pkgs.libxrandr.src} COPYING $L/libXrandr.COPYING
-  extract_license ${pkgs.libxrender.src} COPYING $L/libXrender.COPYING
-  extract_license ${pkgs.libxxf86vm.src} COPYING $L/libXxf86vm.COPYING
-  extract_license ${pkgs.libxcb.src} COPYING $L/libxcb.COPYING
-  extract_license ${pkgs.libxau.src} COPYING $L/libXau.COPYING
-  extract_license ${pkgs.libxdmcp.src} COPYING $L/libXdmcp.COPYING
-  extract_license ${pkgs.libxfixes.src} COPYING $L/libXfixes.COPYING
-  extract_license ${pkgs.expat.src} COPYING $L/expat.COPYING
-  extract_license ${pkgs.stdenv.cc.cc.src} COPYING3 $L/libstdc++-COPYING3
-  extract_license ${pkgs.stdenv.cc.cc.src} COPYING.RUNTIME $L/libstdc++-COPYING.RUNTIME
+  ${licenseExtractLines}
+  extract_license_glob ${xorgprotoPkg.src} "COPYING-*" $L/xorgproto-
 
   # This variant forbids incorporating LLVM at all, so its archive must carry no
   # LLVM notice.  The binary string scan above proves no LLVM code was linked;
