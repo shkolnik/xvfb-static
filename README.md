@@ -38,6 +38,20 @@ See [the input architecture recommendations](docs/KEYBOARD-INPUT-ARCHITECTURE.md
 for profile selection, keystroke planning, injection, and
 verification layers.
 
+## Pointer scroll
+
+The core/XTEST pointer advertises an XI2.1 `ScrollClass`: a horizontal and a
+vertical scroll valuator, each with increment `120.0`. XI2.1-aware clients can
+inject and observe scroll at valuator resolution instead of whole detents,
+while clients that understand only core wheel buttons 4/5/6/7 keep working
+unchanged — one legacy wheel click still moves the axis by exactly one
+increment.
+
+The release test suite verifies this against the XI2.1 protocol surface:
+scroll-class presence, legacy wheel-button emulation, and valuator-injection
+motion. That is the extent of the claim; how any given client maps valuator
+units onto its own scroll model is outside this project.
+
 The standard artifacts disable GLX to minimize size and dependency surface.
 Separate **GLX llvmpipe alpha** artifacts embed Mesa llvmpipe for software-rendered,
 indirect GLX without a host GPU driver or shared library. They are larger and
