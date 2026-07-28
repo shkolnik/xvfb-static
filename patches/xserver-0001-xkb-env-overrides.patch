@@ -64,7 +64,7 @@ patch's header.
 +    /* xvfb-static: XVFB_STATIC_XKM_OUTPUT_DIR overrides the compiled-in XKM_OUTPUT_DIR
 +     * (a build-time-only AC_DEFINE_DIR constant, no existing runtime knob —
 +     * verified by grepping this tree for XKM_OUTPUT_DIR/getenv before
-+     * patching). A relocatable pack build has no writable path baked in at
++     * patching). A relocatable static build has no writable path baked in at
 +     * compile time, so without this every boot falls through silently to
 +     * the hardcoded "/tmp/" default further below. */
 +    const char *xvfb_static_dir = getenv("XVFB_STATIC_XKM_OUTPUT_DIR");
@@ -87,8 +87,8 @@ patch's header.
 +#ifndef WIN32
 +/* xvfb-static: direct-exec replacement for Popen()->execl("/bin/sh","sh","-c",cmd)
 + * (os/utils.c:1487) — a shell-less distroless host has no /bin/sh, so Popen
-+ * can't run xkbcomp there and the server never finishes keyboard init (the
-+ * pack's boot bar). Popen()/Pclose() are used nowhere else in this tree
++ * can't run xkbcomp there and the server never finishes keyboard init.
++ * Popen()/Pclose() are used nowhere else in this tree
 + * (verified: `grep -rln 'Popen(\|Pclose('` matches only os/utils.c, which
 + * defines them, and this file), so this adds a parallel fork/pipe/execv
 + * path used only here instead of touching the exported Popen()/Pclose()
@@ -182,7 +182,7 @@ patch's header.
 +    /* xvfb-static: XVFB_STATIC_XKB_BINDIR overrides the compiled-in XkbBinDirectory —
 +     * upstream has no runtime knob for it at all (only -xkbdir, which sets
 +     * XkbBaseDirectory, the *data* tree — verified in xkb/xkbInit.c's
-+     * XkbProcessArguments). A relocatable pack build doesn't know its own
++     * XkbProcessArguments). A relocatable static build doesn't know its own
 +     * install location at compile time. */
 +    const char *bindir = getenv("XVFB_STATIC_XKB_BINDIR");
 +    char *xkbcomp_path = NULL, *xkm_full_path = NULL;

@@ -243,17 +243,17 @@ package.nix lists them in.
 + * XkbRMLVOtoKcCGST() -> XkbDDXNamesFromRules(), which opens
 + * <XkbBaseDirectory>/rules/<rules> BEFORE anything is compiled, and then
 + * XkbDDXLoadKeymapByNames() -> RunXkbComp() (fork+execv of xkbcomp, per
-+ * xserver-0001) -> LoadXKM(). This pack ships only a fixed catalog of
++ * xserver-0001) -> LoadXKM(). This binary ships only a fixed catalog of
 + * precompiled keymaps, so there is no reason to consult rules at runtime.
 + *
 + * XkmReadFile() takes a FILE *, so fmemopen() hands it the embedded bytes
 + * with no filesystem access whatsoever -- no rules file, no data tree, no
 + * xkbcomp process, no output directory, no temp file, no unlink. That is what
-+ * lets the pack drop bin/xkbcomp (1.5 MB) and share/xkb (580 KB, 54 files)
++ * lets the artifact drop bin/xkbcomp and its share/xkb data tree
 + * entirely. fmemopen() is POSIX.1-2008 and present in musl, which is this
-+ * pack's only libc (pkgsStatic).
++ * project's only libc (pkgsStatic).
 + *
-+ * Fail LOUD on a rejected blob (tenet 5), and do it against a FIXED local
++ * Fail LOUD on a rejected blob, and do it against a FIXED local
 + * requirement rather than the caller's `need`. Upstream checked
 + * (need & provided) != need, which is correct when `need` describes a keymap
 + * being selected -- but it is NOT safe here, because our caller
@@ -374,7 +374,7 @@ package.nix lists them in.
 + *
 + * This is the ONE remaining entry point that reached xkbcomp: upstream compiled
 + * the caller-supplied keymap string by piping it to xkbcomp
-+ * (XkbDDXLoadKeymapFromString -> RunXkbComp, both above). This pack ships no
++ * (XkbDDXLoadKeymapFromString -> RunXkbComp, both above). This binary ships no
 + * xkbcomp binary and no XKB data tree at all -- its supported keymaps are
 + * compiled INTO this binary (see XkbCompileKeymapForDevice below) -- so that path
 + * could only ever fail, and would fail as a confusing exec error naming a binary
@@ -386,7 +386,7 @@ package.nix lists them in.
 + * FatalError("Failed to activate virtual core keyboard") -- the server refuses to
 + * start. Handing the request to KeymapOrDefaults() would instead quietly load the
 + * embedded keymap and boot as if -keymap had been honoured, which is exactly the
-+ * silent substitution tenet 5 forbids: whoever passed -keymap asked for a
++ * silent substitution this patch prevents: whoever passed -keymap asked for a
 + * DIFFERENT layout, and an application generating physical input must never
 + * silently use a keyboard other than the one it was told to.
 + *
