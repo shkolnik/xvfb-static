@@ -253,10 +253,10 @@ to their named upstreams. See section 7 for ordering rules.
 | `patches/xserver-0004-component-log-prefixes.patch` | Adds stable component labels to project-owned Xserver and XKB diagnostics. |
 | `patches/xserver-0005-linked-swrast.patch` | GLX variants only: resolves the statically linked GL driver instead of dlopening a DRI module. |
 | `patches/xserver-0006-scroll-valuators.patch` | All three variants: grows the core pointer from 2 to 4 valuator axes and advertises an XI2.1 `ScrollClass` (horizontal, vertical) on `CorePointerProc`'s device. |
-| `patches/mesa-0001-check-jit-before-use.patch` | Prevents Mesa from assuming an LLVM JIT that the no-LLVM configuration does not provide. |
+| `patches/mesa-0001-check-jit-before-use.patch` | Returns an error instead of dereferencing null when the LLVM execution engine cannot be built. |
 | `patches/mesa-0002-linked-swrast-entrypoint.patch` | Exposes the statically linked swrast entry point the xserver patch above expects. |
 | `patches/mesa-0003-force-linked-zink.patch` | Forces Zink selection so no software renderer can be substituted silently. |
-| `patches/llvm-0001-allow-static-execution-engine.patch` | llvmpipe variant only: lets the execution engine link statically. |
+| `patches/llvm-0001-allow-static-execution-engine.patch` | llvmpipe variant only: drops the execution engine's dlopen requirement, which a static build cannot satisfy. |
 | `patches/umoci-0001-rootless-mask-privileged-mode-bits.patch` | Lets the sysroot unpack run rootless by masking privileged mode bits. |
 
 ### Scripts and automation
