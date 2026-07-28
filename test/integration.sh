@@ -9,7 +9,12 @@ if [[ -z "$arch" ]]; then
     *) echo "unsupported host architecture: $(uname -m)" >&2; exit 2 ;;
   esac
 fi
-case "$arch" in x86_64|aarch64) ;; *) echo "usage: $0 [x86_64|aarch64]" >&2; exit 2 ;; esac
+case "$arch" in x86_64|aarch64) ;; *) echo "usage: $0 [x86_64|aarch64] [check-name]" >&2; exit 2 ;; esac
+check="${2:-keyboard-profiles}"
+case "$check" in
+  keyboard-profiles|glx-llvmpipe-keyboard-profiles) ;;
+  *) echo "usage: $0 [x86_64|aarch64] [keyboard-profiles|glx-llvmpipe-keyboard-profiles]" >&2; exit 2 ;;
+esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Single source of truth for the pinned build container; see build-image.txt.
@@ -20,8 +25,8 @@ docker run --rm \
   "$image" sh -eu -c "
     git config --global --add safe.directory /src
     bash /src/nix-build-cached.sh nix --extra-experimental-features 'nix-command flakes' \
-      build '.#checks.$(case "$arch" in x86_64) echo x86_64-linux ;; aarch64) echo aarch64-linux ;; esac).keyboard-profiles' \
+      build '.#checks.$(case "$arch" in x86_64) echo x86_64-linux ;; aarch64) echo aarch64-linux ;; esac).$check' \
       --no-link --option log-lines 200
   "
 
-echo "xvfb-static keyboard integration test passed ($arch)"
+echo "xvfb-static keyboard integration test passed ($arch, $check)"
