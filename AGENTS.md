@@ -272,6 +272,7 @@ to their named upstreams. See section 7 for ordering rules.
 | `scripts/release-tag.sh` | The one definition of the release tag grammar, sourced by both `release.sh` and the release workflow. |
 | `.github/workflows/ci.yml` | Shell-syntax and lock checks, then builds and tests all three variants on both native architectures, uploading ephemeral artifacts. |
 | `.github/workflows/release.yml` | Validates `v<upstream>-r<revision>` tags, builds and tests all six artifacts, attests them, and publishes them with combined checksums. |
+| `.github/workflows/storage-janitor.yml` | Weekly scheduled caller of the reusable storage janitor (`shkolnik/rust-cache`): prunes old Actions artifacts and closed-PR caches; never touches releases. |
 | `.github/dependabot.yml` | GitHub Actions updates monthly and `nixpkgs` flake-input updates weekly. |
 | `.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/pull_request_template.md` | Contribution intake forms; the PR template states the real verification matrix. |
 | `.gitignore` | Excludes `out/`, Nix result links, and release temporaries. |
