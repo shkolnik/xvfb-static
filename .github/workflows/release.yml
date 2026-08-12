@@ -181,7 +181,7 @@ jobs:
         name: Verify external Vulkan ABI and Zink render
         run: ./test/glx-external-vulkan-smoke.sh "${{ matrix.archive }}" "result-glx-render-test/bin/glx-render-test" "result-corrupt-external-vulkan/bin/Xvfb" "result-xi2-scroll-check/bin/xi2-scroll-check"
       - name: Attest release archive
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
         with:
           subject-path: ${{ matrix.archive }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
