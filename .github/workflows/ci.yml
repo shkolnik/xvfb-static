@@ -191,6 +191,7 @@ jobs:
             ${{ matrix.archive }}
             out/no-glx/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: matrix.variant == 'glx-llvmpipe'
         with:
@@ -199,6 +200,7 @@ jobs:
             ${{ matrix.archive }}
             out/glx-llvmpipe/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: matrix.variant == 'glx-external-vulkan'
         with:
@@ -207,6 +209,7 @@ jobs:
             ${{ matrix.archive }}
             out/glx-external-vulkan-alpha/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
+          retention-days: 7
 
   build-success:
     name: build-success

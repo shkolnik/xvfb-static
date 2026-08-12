@@ -189,6 +189,7 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.archive }}
           if-no-files-found: error
+          retention-days: 1
 
   publish:
     name: Publish GitHub Release
