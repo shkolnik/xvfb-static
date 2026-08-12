@@ -1,0 +1,21 @@
+name: Storage janitor
+
+on:
+  schedule:
+    - cron: "0 9 * * 0" # weekly, Sunday 09:00 UTC (off-peak)
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Log what would be deleted without deleting anything"
+        type: boolean
+        default: false
+
+jobs:
+  janitor:
+    uses: shkolnik/rust-cache/.github/workflows/janitor.yml@actions-janitor
+    permissions:
+      actions: write
+    with:
+      artifact-retention-days: 7
+      prune-pr-caches: true
+      dry-run: ${{ inputs.dry-run || false }}
