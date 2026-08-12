@@ -12,9 +12,10 @@ on:
 
 jobs:
   janitor:
-    uses: shkolnik/rust-cache/.github/workflows/janitor.yml@actions-janitor
+    uses: shkolnik/rust-cache/.github/workflows/janitor.yml@main
     permissions:
       actions: write
+      pull-requests: read
     with:
       artifact-retention-days: 7
       prune-pr-caches: true
