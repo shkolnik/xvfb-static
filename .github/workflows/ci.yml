@@ -183,7 +183,7 @@ jobs:
         name: Verify external Vulkan ABI and Zink render
         run: ./test/glx-external-vulkan-smoke.sh "${{ matrix.archive }}" "result-glx-render-test/bin/glx-render-test" "result-corrupt-external-vulkan/bin/Xvfb" "result-xi2-scroll-check/bin/xi2-scroll-check"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: matrix.variant == 'no-glx'
         with:
           name: xvfb-static-no-glx-linux-${{ matrix.arch }}
@@ -192,7 +192,7 @@ jobs:
             out/no-glx/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: matrix.variant == 'glx-llvmpipe'
         with:
           name: xvfb-static-glx-llvmpipe-linux-${{ matrix.arch }}
@@ -201,7 +201,7 @@ jobs:
             out/glx-llvmpipe/${{ matrix.arch }}/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: matrix.variant == 'glx-external-vulkan'
         with:
           name: xvfb-static-glx-external-vulkan-alpha-linux-${{ matrix.arch }}
